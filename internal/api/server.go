@@ -164,8 +164,8 @@ body {font-family:system-ui,Arial;background:#1a1a1a;color:#e0e0e0;line-height:1
 .indicator {width:12px;height:12px;border-radius:50%;background:#4ade80;animation:pulse 2s infinite}
 .indicator.off {background:#f87171;animation:none}
 @keyframes pulse {0%,100%{opacity:1}50%{opacity:.5}}
-.tabs {display:flex;gap:10px;margin-bottom:30px;border-bottom:1px solid #404040}
-.tab {padding:12px 24px;background:0;border:0;border-bottom:2px solid transparent;color:#a0a0a0;cursor:pointer;transition:all .3s}
+.tabs {display:flex;gap:10px;margin-bottom:30px;border-bottom:1px solid #404040;overflow-x:auto}
+.tab {padding:12px 24px;background:0;border:0;border-bottom:2px solid transparent;color:#a0a0a0;cursor:pointer;transition:all .3s;white-space:nowrap}
 .tab:hover {color:#e0e0e0}
 .tab.active {color:#4a9eff;border-bottom-color:#4a9eff}
 .content {display:none}
@@ -175,16 +175,18 @@ body {font-family:system-ui,Arial;background:#1a1a1a;color:#e0e0e0;line-height:1
 .form-group {margin-bottom:15px}
 label {display:block;margin-bottom:8px;font-size:14px;color:#a0a0a0}
 input,select,textarea {width:100%;padding:10px;background:#1a1a1a;border:1px solid #404040;border-radius:4px;color:#e0e0e0;font-family:inherit}
+textarea {resize:vertical;min-height:100px}
 button {padding:10px 20px;background:#4a9eff;border:0;border-radius:4px;color:white;cursor:pointer;transition:all .3s}
 button:hover {background:#357abd}
 button.sec {background:#1a1a1a;border:1px solid #404040;color:#e0e0e0}
 button.danger {background:#f87171}
 button:disabled {opacity:.5}
-.buttons {display:flex;gap:10px;margin-top:15px}
+.buttons {display:flex;gap:10px;margin-top:15px;flex-wrap:wrap}
 .list {display:flex;flex-direction:column;gap:10px}
 .item {display:flex;justify-content:space-between;align-items:center;padding:12px;background:#1a1a1a;border:1px solid #404040;border-radius:4px}
 .result {padding:15px;background:#1a1a1a;border-left:3px solid #4a9eff;border-radius:4px;margin-bottom:15px}
 .score {display:inline-block;padding:2px 8px;background:#4a9eff;border-radius:12px;font-size:12px;font-weight:600;margin-bottom:8px}
+.response {padding:15px;background:#1a1a1a;border-radius:4px;min-height:100px;white-space:pre-wrap;word-wrap:break-word}
 .msg {padding:12px 15px;border-radius:4px;margin-bottom:15px;font-size:14px}
 .msg.ok {background:rgba(74,222,128,.1);border:1px solid #4ade80;color:#4ade80}
 .msg.err {background:rgba(248,113,113,.1);border:1px solid #f87171;color:#f87171}
@@ -205,6 +207,7 @@ button:disabled {opacity:.5}
 <div class="tabs">
 <button class="tab active" data-tab="docs">📄 Documents</button>
 <button class="tab" data-tab="search">🔍 Search</button>
+<button class="tab" data-tab="rag">✨ RAG</button>
 <button class="tab" data-tab="settings">⚙️ Settings</button>
 </div>
 <div id="docs" class="content active">
@@ -230,6 +233,18 @@ button:disabled {opacity:.5}
 <div id="results" class="list"></div>
 </div>
 </div>
+<div id="rag" class="content">
+<div class="card">
+<div class="title">Ask Question</div>
+<div class="form-group"><label>Question</label><textarea id="ragQuery" placeholder="Ask a question..."></textarea></div>
+<div class="form-group"><label>Model</label><select id="model"><option>gpt-4</option><option>claude-3-opus</option><option>gpt-3.5-turbo</option></select></div>
+<div class="buttons"><button id="ragBtn">Ask</button><button class="sec" id="clearRagBtn">Clear</button></div>
+</div>
+<div class="card">
+<div class="title">Response</div>
+<div id="ragResponse" class="response muted">Ask a question to get started...</div>
+</div>
+</div>
 <div id="settings" class="content">
 <div class="card">
 <div class="title">Configuration</div>
@@ -245,7 +260,10 @@ document.getElementById('uploadBtn').addEventListener('click',upload);
 document.getElementById('clearBtn').addEventListener('click',()=>{document.getElementById('file').value='';document.getElementById('title').value=''});
 document.getElementById('searchBtn').addEventListener('click',search);
 document.getElementById('clearSearchBtn').addEventListener('click',()=>{document.getElementById('query').value='';document.getElementById('results').innerHTML=''});
+document.getElementById('ragBtn').addEventListener('click',rag);
+document.getElementById('clearRagBtn').addEventListener('click',()=>{document.getElementById('ragQuery').value='';document.getElementById('ragResponse').textContent='Ask a question to get started...'});
 document.getElementById('query').addEventListener('keypress',e=>{if(e.key==='Enter')search()});
+document.getElementById('ragQuery').addEventListener('keypress',e=>{if(e.ctrlKey&&e.key==='Enter')rag()});
 check();setInterval(check,5000);loadDocs();loadConfig()
 });
 function switchTab(e){document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));e.target.classList.add('active');document.querySelectorAll('.content').forEach(c=>c.classList.remove('active'));document.getElementById(e.target.dataset.tab).classList.add('active')}
@@ -255,6 +273,7 @@ async function upload(){const f=document.getElementById('file').files[0];if(!f){
 async function loadDocs(){try{const r=await fetch(API+'/documents');const d=await r.json();const l=document.getElementById('docList');l.innerHTML='';if(!d.data.documents||d.data.documents.length===0){l.innerHTML='<p class="muted">No documents</p>';document.getElementById('count').textContent='0';return}document.getElementById('count').textContent=d.data.documents.length;d.data.documents.forEach(doc=>{const item=document.createElement('div');item.className='item';item.innerHTML='<div><strong>'+doc.title+'</strong><br><small>'+doc.chunks_count+' chunks</small></div><button class="danger" onclick="del('+JSON.stringify(doc.id)+')">Delete</button>';l.appendChild(item)})}catch(e){msg('Failed to load: '+e.message,'err')}}
 async function del(id){if(!confirm('Delete?'))return;try{await fetch(API+'/documents/'+id,{method:'DELETE'});msg('Deleted','ok');loadDocs()}catch(e){msg('Delete failed: '+e.message,'err')}}
 async function search(){const q=document.getElementById('query').value;if(!q){msg('Enter query','err');return}try{document.getElementById('searchBtn').disabled=true;const r=await fetch(API+'/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,top_k:5,search_type:'hybrid'})});const d=await r.json();const c=document.getElementById('results');c.innerHTML='';if(!d.data.results||d.data.results.length===0){c.innerHTML='<p class="muted">No results</p>';return}d.data.results.forEach(res=>{const item=document.createElement('div');item.className='result';item.innerHTML='<div class="score">'+(res.score*100).toFixed(0)+'%</div><div>'+res.text+'</div>';c.appendChild(item)})}catch(e){msg('Search failed: '+e.message,'err')}finally{document.getElementById('searchBtn').disabled=false}}
+async function rag(){const q=document.getElementById('ragQuery').value;if(!q){msg('Enter question','err');return}try{document.getElementById('ragBtn').disabled=true;document.getElementById('ragResponse').textContent='Loading...';const r=await fetch(API+'/rag/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,model:document.getElementById('model').value,stream:true})});const reader=r.body.getReader();const decoder=new TextDecoder();let resp='';while(true){const {done,value}=await reader.read();if(done)break;const chunk=decoder.decode(value);const lines=chunk.split('\n');for(const line of lines){if(line.startsWith('data: ')){try{const data=JSON.parse(line.substring(6));if(data.type==='delta'){resp+=data.text;document.getElementById('ragResponse').textContent=resp}else if(data.type==='done'){}}catch(e){}}}}}}catch(e){msg('RAG failed: '+e.message,'err')}finally{document.getElementById('ragBtn').disabled=false}}
 async function loadConfig(){try{const r=await fetch(API+'/config');const d=await r.json();document.getElementById('config').innerHTML='Model: '+d.data.embedding_model+'<br>Chunk Size: '+d.data.chunk_size+'<br>Overlap: '+d.data.chunk_overlap}catch(e){}}
 </script>
 </body>
