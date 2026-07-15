@@ -23,12 +23,12 @@ func main() {
 		dataDir = flag.String("data-dir", "", "Data directory (default: ~/.small-rag)")
 		port    = flag.Int("port", 8765, "HTTP server port")
 		debug   = flag.Bool("debug", false, "Enable debug logging")
-		version = flag.Bool("version", false, "Show version")
+		showVersion = flag.Bool("version", false, "Show version")
 	)
 	flag.Parse()
 
 	// Version
-	if *version {
+	if *showVersion {
 		fmt.Println("small-rag", version)
 		os.Exit(0)
 	}
@@ -49,6 +49,9 @@ func main() {
 
 	log.Printf("small-rag v%s", version)
 	log.Printf("Data directory: %s", *dataDir)
+	if *debug {
+		log.Printf("Debug mode enabled")
+	}
 
 	// Load config
 	cfg, err := config.Load(*dataDir)
@@ -68,8 +71,11 @@ func main() {
 		log.Fatalf("Failed to initialize schema: %v", err)
 	}
 
+	log.Printf("Database initialized")
+
 	// Start API server
 	server := api.NewServer(database, cfg)
+	log.Printf("Starting server on port %d", *port)
 	if err := server.Start(*port); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}

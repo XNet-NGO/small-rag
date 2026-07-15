@@ -10,20 +10,26 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/xnet-admin-1/small-rag/internal/config"
+	"github.com/xnet-admin-1/small-rag/internal/embedding"
+	"github.com/xnet-admin-1/small-rag/internal/search"
 )
 
 // Server represents the HTTP API server
 type Server struct {
-	db     *sql.DB
-	cfg    *config.Config
-	router chi.Router
+	db        *sql.DB
+	cfg       *config.Config
+	router    chi.Router
+	embedding *embedding.Engine
+	search    *search.Engine
 }
 
 // NewServer creates a new API server
 func NewServer(db *sql.DB, cfg *config.Config) *Server {
 	s := &Server{
-		db:  db,
-		cfg: cfg,
+		db:        db,
+		cfg:       cfg,
+		embedding: embedding.NewEngine("", cfg.EmbeddingDims),
+		search:    search.NewEngine(db),
 	}
 	s.setupRouter()
 	return s
@@ -96,115 +102,109 @@ func (s *Server) Start(port int) error {
 // Response types
 
 type HealthResponse struct {
-	Status           string `json:"status"`
-	Version          string `json:"version"`
-	EmbeddingsCount  int    `json:"embeddings_count"`
-	DocumentsCount   int    `json:"documents_count"`
-	UptimeSeconds    int    `json:"uptime_seconds"`
-}
-
-type ErrorResponse struct {
-	Error string `json:"error"`
-	Code  int    `json:"code"`
+	Success bool `json:"success"`
+	Data    struct {
+		Status          string `json:"status"`
+		Version         string `json:"version"`
+		EmbeddingsCount int    `json:"embeddings_count"`
+		DocumentsCount  int    `json:"documents_count"`
+		UptimeSeconds   int    `json:"uptime_seconds"`
+	} `json:"data"`
 }
 
 // Handlers
 
 func (s *Server) handleWebUI(w http.ResponseWriter, r *http.Request) {
-	// Serve embedded web UI
-	// For now, return a redirect to index.html
-	// TODO: Embed index.html in binary using go:embed
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	// In production, this would be served from embedded files
 	fmt.Fprint(w, "Web UI - See web/index.html")
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	resp := HealthResponse{
-		Status:  "ready",
-		Version: "0.1.0",
+		Success: true,
 	}
 
+	resp.Data.Status = "ready"
+	resp.Data.Version = "0.1.0"
+
 	// Get counts from database
-	s.db.QueryRow("SELECT COUNT(*) FROM documents").Scan(&resp.DocumentsCount)
-	s.db.QueryRow("SELECT COUNT(*) FROM embeddings").Scan(&resp.EmbeddingsCount)
+	s.db.QueryRow("SELECT COUNT(*) FROM documents").Scan(&resp.Data.DocumentsCount)
+	s.db.QueryRow("SELECT COUNT(*) FROM embeddings").Scan(&resp.Data.EmbeddingsCount)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
 
-func (s *Server) handleListDocuments(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement pagination
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"documents": []interface{}{},
-		"total":     0,
-	})
-}
-
-func (s *Server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement document upload and chunking
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":                  "doc-123",
-		"title":               "Document",
-		"chunks_created":      0,
-		"embeddings_created":  0,
-		"status":              "pending",
-	})
-}
-
-func (s *Server) handleGetDocument(w http.ResponseWriter, r *http.Request) {
-	docID := chi.URLParam(r, "doc_id")
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":           docID,
-		"title":        "Document",
-		"chunks_count": 0,
-	})
-}
-
-func (s *Server) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement document deletion
-	w.WriteHeader(http.StatusNoContent)
-}
-
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement search
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"query":       "search query",
-		"results":     []interface{}{},
-		"search_time_ms": 0,
+	// Parse request
+	var req struct {
+		Query      string  `json:"query"`
+		TopK       int     `json:"top_k"`
+		SearchType string  `json:"search_type"`
+		MinScore   float32 `json:"min_score"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "Invalid request",
+		})
+		return
+	}
+
+	// Embed query
+	queryEmbedding, err := s.embedding.Embed(req.Query)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"success": false,
+			"error":   "Failed to embed query",
+		})
+		return
+	}
+
+	// Search
+	results, err := s.search.Search(req.Query, queryEmbedding, req.TopK, req.SearchType, req.MinScore)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Search failed: %v", err),
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"query":   req.Query,
+			"results": results,
+		},
 	})
 }
 
 func (s *Server) handleRAGQuery(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement RAG query with streaming
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	// Send sample events
+	// Sample streaming response
 	fmt.Fprintf(w, "data: {\"type\":\"context\",\"chunks\":3}\n\n")
-	fmt.Fprintf(w, "data: {\"type\":\"delta\",\"text\":\"Response...\"}\n\n")
+	fmt.Fprintf(w, "data: {\"type\":\"delta\",\"text\":\"This is a sample response...\"}\n\n")
 	fmt.Fprintf(w, "data: {\"type\":\"done\",\"total_tokens\":100}\n\n")
 }
 
 func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(s.cfg)
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"data":    s.cfg,
+	})
 }
 
 func (s *Server) handleSearchAndRAG(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement agent tool
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"query":   "search query",
-		"answer":  "Based on documents...",
-		"sources": []interface{}{},
-		"tokens_used": 0,
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"answer": "Agent tool not yet implemented",
+		},
 	})
 }
