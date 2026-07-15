@@ -12,9 +12,15 @@ import (
 )
 
 const (
+	// Embedding model
 	ModelURL  = "https://huggingface.co/PeterAM4/Qwen3-Embedding-0.6B-GGUF/resolve/main/Qwen3-Embedding-0.6B-Q4_K_M-imat.gguf"
 	ModelName = "qwen3-embedding-0.6b-q4_k_m.gguf"
 	ModelSize = 378_000_000 // ~378MB
+
+	// Chat/LLM model
+	ChatModelURL  = "https://huggingface.co/unsloth/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q4_K_M.gguf"
+	ChatModelName = "qwen3-0.6b-q4_k_m.gguf"
+	ChatModelSize = 378_000_000 // ~378MB
 
 	// llama.cpp shared library release (matches yzma v1.19.0 / llama.cpp b9979+)
 	LlamaLibURL  = "https://github.com/hybridgroup/llama-cpp-builder/releases/download/b10361/llama-cpp-shared-libs-linux-x86_64.tar.gz"
@@ -68,13 +74,27 @@ func Run() error {
 	} else {
 		fmt.Printf("\n⬇️  Downloading model: %s\n", ModelName)
 		fmt.Printf("   Source: %s\n", ModelURL)
-		if err := downloadModel(modelPath); err != nil {
+		if err := downloadFile(modelPath, ModelURL, ModelSize); err != nil {
 			return fmt.Errorf("failed to download model: %w", err)
 		}
 		fmt.Println("\n   ✅ Model downloaded")
 	}
 
-	// Step 4: Write default config
+	// Step 4: Download chat model
+	chatModelPath := filepath.Join(baseDir, "models", ChatModelName)
+	if _, err := os.Stat(chatModelPath); err == nil {
+		fmt.Printf("\n📦 Chat model already exists: %s\n", ChatModelName)
+		fmt.Println("   ✅ Skipping download")
+	} else {
+		fmt.Printf("\n⬇️  Downloading chat model: %s\n", ChatModelName)
+		fmt.Printf("   Source: %s\n", ChatModelURL)
+		if err := downloadFile(chatModelPath, ChatModelURL, ChatModelSize); err != nil {
+			return fmt.Errorf("failed to download chat model: %w", err)
+		}
+		fmt.Println("\n   ✅ Chat model downloaded")
+	}
+
+	// Step 5: Write default config
 	configPath := filepath.Join(baseDir, "config.json")
 	if _, err := os.Stat(configPath); err != nil {
 		fmt.Println("\n⚙️  Writing default config...")
@@ -102,7 +122,8 @@ func Run() error {
 	fmt.Printf("  ├── lib/\n")
 	fmt.Printf("  │   └── libllama.so (+ other .so files)\n")
 	fmt.Printf("  └── models/\n")
-	fmt.Printf("      └── %s\n", ModelName)
+	fmt.Printf("      ├── %s  (embeddings)\n", ModelName)
+	fmt.Printf("      └── %s  (chat/RAG)\n", ChatModelName)
 	fmt.Printf("\nRun: ./small-rag\n")
 
 	return nil
@@ -121,8 +142,8 @@ func getBaseDir() string {
 	return filepath.Dir(exe)
 }
 
-// downloadModel downloads the GGUF model with progress
-func downloadModel(destPath string) error {
+// downloadFile downloads a file with progress bar
+func downloadFile(destPath, url string, expectedSize int64) error {
 	// Create temp file for download
 	tmpPath := destPath + ".tmp"
 	defer os.Remove(tmpPath)
@@ -134,7 +155,7 @@ func downloadModel(destPath string) error {
 	defer out.Close()
 
 	// Start download
-	resp, err := http.Get(ModelURL)
+	resp, err := http.Get(url)
 	if err != nil {
 		return fmt.Errorf("failed to start download: %w", err)
 	}
@@ -146,7 +167,7 @@ func downloadModel(destPath string) error {
 
 	totalSize := resp.ContentLength
 	if totalSize <= 0 {
-		totalSize = ModelSize
+		totalSize = expectedSize
 	}
 
 	// Download with progress
@@ -237,6 +258,7 @@ func writeDefaultConfig(baseDir string) error {
 func verify(baseDir string) error {
 	required := []string{
 		filepath.Join(baseDir, "models", ModelName),
+		filepath.Join(baseDir, "models", ChatModelName),
 		filepath.Join(baseDir, "lib", ".installed"),
 	}
 
