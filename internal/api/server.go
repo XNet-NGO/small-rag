@@ -381,7 +381,7 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 			"chunk_overlap":   s.cfg.ChunkOverlap,
 			"search_types":    s.cfg.SearchTypes,
 			"min_score":       s.cfg.MinScore,
-			"default_model":   "qwen3-0.6b",
+			"default_model":   "falcon-h1-tiny-90m",
 			"llm_endpoint":    llmURL,
 			"port":            s.cfg.Port,
 			"enable_cache":    s.cfg.EnableCache,
@@ -745,7 +745,7 @@ button:disabled {opacity:.5}
 <div class="card">
 <div class="title">Ask Question</div>
 <div class="form-group"><label>Question</label><textarea id="ragQuery" placeholder="Ask a question..."></textarea></div>
-<div class="form-group"><label>Model</label><select id="model"><option>qwen3-0.6b</option><option>default</option></select></div>
+<div class="form-group"><label>Model</label><select id="model"><option>falcon-h1-tiny-90m</option><option>default</option></select></div>
 <div class="buttons"><button id="ragBtn">Ask</button><button class="sec" id="clearRagBtn">Clear</button></div>
 </div>
 <div class="card">
