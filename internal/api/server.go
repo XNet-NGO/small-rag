@@ -37,6 +37,11 @@ func (s *Server) setupRouter() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.StripSlashes)
+	r.Use(corsMiddleware)
+
+	// Static files (web UI)
+	r.Get("/", s.handleWebUI)
+	r.Get("/index.html", s.handleWebUI)
 
 	// Health check
 	r.Get("/health", s.handleHealth)
@@ -65,6 +70,22 @@ func (s *Server) setupRouter() {
 	s.router = r
 }
 
+// corsMiddleware adds CORS headers
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		
+		next.ServeHTTP(w, r)
+	})
+}
+
 // Start starts the HTTP server
 func (s *Server) Start(port int) error {
 	addr := fmt.Sprintf(":%d", port)
@@ -88,6 +109,16 @@ type ErrorResponse struct {
 }
 
 // Handlers
+
+func (s *Server) handleWebUI(w http.ResponseWriter, r *http.Request) {
+	// Serve embedded web UI
+	// For now, return a redirect to index.html
+	// TODO: Embed index.html in binary using go:embed
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	// In production, this would be served from embedded files
+	fmt.Fprint(w, "Web UI - See web/index.html")
+}
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	resp := HealthResponse{

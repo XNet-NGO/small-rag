@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Small-RAG - Portable RAG System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #2d2d2d;
+            --bg-tertiary: #3a3a3a;
+            --border-color: #404040;
+            --text-primary: #e0e0e0;
+            --text-secondary: #a0a0a0;
+            --accent-color: #4a9eff;
+            --accent-hover: #357abd;
+            --success-color: #4ade80;
+            --error-color: #f87171;
+            --warning-color: #fbbf24;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        /* Layout */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-status {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            font-size: 14px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: var(--success-color);
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.disconnected {
+            background-color: var(--error-color);
+            animation: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .tab-button {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .tab-button:hover {
+            color: var(--text-primary);
+        }
+
+        .tab-button.active {
+            color: var(--accent-color);
+            border-bottom-color: var(--accent-color);
+        }
+
+        /* Tab Content */
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Card */
+        .card {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: var(--text-primary);
+        }
+
+        /* Form Elements */
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="file"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 10px;
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: inherit;
+        }
+
+        input[type="text"]:focus,
+        input[type="number"]:focus,
+        input[type="file"]:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.1);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        /* Buttons */
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background-color: var(--accent-color);
+            border: none;
+            border-radius: 4px;
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            background-color: var(--accent-hover);
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        button.secondary {
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        button.secondary:hover {
+            background-color: var(--border-color);
+        }
+
+        button.danger {
+            background-color: var(--error-color);
+        }
+
+        button.danger:hover {
+            background-color: #e85c5c;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Lists */
+        .item-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+        }
+
+        .list-item-info {
+            flex: 1;
+        }
+
+        .list-item-title {
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .list-item-meta {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .list-item-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        /* Results */
+        .result-item {
+            padding: 15px;
+            background-color: var(--bg-tertiary);
+            border-left: 3px solid var(--accent-color);
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+
+        .result-score {
+            display: inline-block;
+            padding: 2px 8px;
+            background-color: var(--accent-color);
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .result-text {
+            line-height: 1.6;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+
+        .result-source {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* Progress */
+        .progress-container {
+            margin-top: 15px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background-color: var(--bg-tertiary);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background-color: var(--accent-color);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        /* Streaming Response */
+        .response-container {
+            padding: 15px;
+            background-color: var(--bg-tertiary);
+            border-radius: 4px;
+            min-height: 100px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .response-meta {
+            display: flex;
+            gap: 20px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* Loading */
+        .loading {
+            display: inline-block;
+            width: 4px;
+            height: 4px;
+            background-color: var(--accent-color);
+            border-radius: 50%;
+            animation: loading 1.4s infinite;
+        }
+
+        .loading:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .loading:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes loading {
+            0%, 60%, 100% { opacity: 0.3; }
+            30% { opacity: 1; }
+        }
+
+        /* Messages */
+        .message {
+            padding: 12px 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .message.success {
+            background-color: rgba(74, 222, 128, 0.1);
+            border: 1px solid var(--success-color);
+            color: var(--success-color);
+        }
+
+        .message.error {
+            background-color: rgba(248, 113, 113, 0.1);
+            border: 1px solid var(--error-color);
+            color: var(--error-color);
+        }
+
+        .message.info {
+            background-color: rgba(74, 158, 255, 0.1);
+            border: 1px solid var(--accent-color);
+            color: var(--accent-color);
+        }
+
+        /* Grid */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+
+            .header {
+                flex-direction: column;
+                gap: 15px;
+                align-items: flex-start;
+            }
+
+            .tabs {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .tab-button {
+                white-space: nowrap;
+                padding: 10px 16px;
+            }
+
+            .list-item {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .list-item-actions {
+                width: 100%;
+                margin-top: 10px;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            button {
+                width: 100%;
+            }
+        }
+
+        /* Utility */
+        .hidden {
+            display: none !important;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .text-muted {
+            color: var(--text-secondary);
+        }
+
+        .mt-20 {
+            margin-top: 20px;
+        }
+
+        .mb-20 {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>
+                📚 Small-RAG
+            </h1>
+            <div class="header-status">
+                <span class="status-indicator" id="statusIndicator"></span>
+                <span id="statusText">Connecting...</span>
+                <span id="statsText" class="text-muted"></span>
+            </div>
+        </div>
+
+        <!-- Messages -->
+        <div id="messagesContainer"></div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab-button active" data-tab="documents">📄 Documents</button>
+            <button class="tab-button" data-tab="search">🔍 Search</button>
+            <button class="tab-button" data-tab="rag">✨ RAG Query</button>
+            <button class="tab-button" data-tab="settings">⚙️ Settings</button>
+        </div>
+
+        <!-- Documents Tab -->
+        <div id="documents" class="tab-content active">
+            <div class="card">
+                <div class="card-title">Upload Document</div>
+                <div class="form-group">
+                    <label for="fileInput">Select File (PDF, TXT, MD)</label>
+                    <input type="file" id="fileInput" accept=".pdf,.txt,.md">
+                </div>
+                <div class="form-group">
+                    <label for="titleInput">Title (optional)</label>
+                    <input type="text" id="titleInput" placeholder="Document title">
+                </div>
+                <div class="form-group">
+                    <label for="sourceInput">Source (optional)</label>
+                    <input type="text" id="sourceInput" placeholder="URL or reference">
+                </div>
+                <div class="button-group">
+                    <button id="uploadBtn">Upload</button>
+                    <button class="secondary" id="clearUploadBtn">Clear</button>
+                </div>
+                <div id="uploadProgress" class="progress-container hidden">
+                    <div class="progress-bar">
+                        <div class="progress-fill"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Documents (<span id="docCount">0</span>)</div>
+                <div id="documentsList" class="item-list"></div>
+            </div>
+        </div>
+
+        <!-- Search Tab -->
+        <div id="search" class="tab-content">
+            <div class="card">
+                <div class="card-title">Search</div>
+                <div class="form-group">
+                    <label for="searchQuery">Query</label>
+                    <input type="text" id="searchQuery" placeholder="Enter search query...">
+                </div>
+                <div class="grid">
+                    <div class="form-group">
+                        <label for="searchType">Search Type</label>
+                        <select id="searchType">
+                            <option value="hybrid">Hybrid (Semantic + Keyword)</option>
+                            <option value="semantic">Semantic</option>
+                            <option value="keyword">Keyword</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="topK">Top Results</label>
+                        <input type="number" id="topK" value="5" min="1" max="20">
+                    </div>
+                    <div class="form-group">
+                        <label for="minScore">Min Score</label>
+                        <input type="number" id="minScore" value="0.3" min="0" max="1" step="0.1">
+                    </div>
+                </div>
+                <div class="button-group">
+                    <button id="searchBtn">Search</button>
+                    <button class="secondary" id="clearSearchBtn">Clear</button>
+                </div>
+                <div id="searchProgress" class="progress-container hidden">
+                    <div class="progress-bar">
+                        <div class="progress-fill"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Results</div>
+                <div id="searchResults" class="item-list"></div>
+            </div>
+        </div>
+
+        <!-- RAG Tab -->
+        <div id="rag" class="tab-content">
+            <div class="card">
+                <div class="card-title">Ask Question</div>
+                <div class="form-group">
+                    <label for="ragQuery">Question</label>
+                    <textarea id="ragQuery" placeholder="Ask a question..."></textarea>
+                </div>
+                <div class="grid">
+                    <div class="form-group">
+                        <label for="ragModel">Model</label>
+                        <select id="ragModel">
+                            <option value="gpt-4">GPT-4</option>
+                            <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                            <option value="claude-3-opus">Claude 3 Opus</option>
+                            <option value="claude-3-sonnet">Claude 3 Sonnet</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="ragTemp">Temperature</label>
+                        <input type="number" id="ragTemp" value="0.7" min="0" max="2" step="0.1">
+                    </div>
+                </div>
+                <div class="button-group">
+                    <button id="ragBtn">Ask</button>
+                    <button class="secondary" id="clearRagBtn">Clear</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Response</div>
+                <div id="ragResponse" class="response-container text-muted">Ask a question to get started...</div>
+                <div id="ragMeta" class="response-meta hidden"></div>
+            </div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="settings" class="tab-content">
+            <div class="card">
+                <div class="card-title">Configuration</div>
+                <div id="configContent" class="text-muted">Loading configuration...</div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">About</div>
+                <p>Small-RAG v0.1.0</p>
+                <p class="text-muted">A self-contained, portable RAG system for autonomous agents.</p>
+                <p class="text-muted mt-20">API: http://localhost:8765/api/v1</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE = 'http://localhost:8765/api/v1';
+        let currentTab = 'documents';
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            setupEventListeners();
+            checkHealth();
+            setInterval(checkHealth, 5000);
+            loadDocuments();
+            loadConfig();
+        });
+
+        // Setup Event Listeners
+        function setupEventListeners() {
+            // Tab switching
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.addEventListener('click', switchTab);
+            });
+
+            // Documents
+            document.getElementById('uploadBtn').addEventListener('click', uploadDocument);
+            document.getElementById('clearUploadBtn').addEventListener('click', clearUpload);
+
+            // Search
+            document.getElementById('searchBtn').addEventListener('click', performSearch);
+            document.getElementById('clearSearchBtn').addEventListener('click', clearSearch);
+
+            // RAG
+            document.getElementById('ragBtn').addEventListener('click', performRAG);
+            document.getElementById('clearRagBtn').addEventListener('click', clearRAG);
+
+            // Enter key
+            document.getElementById('searchQuery').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') performSearch();
+            });
+            document.getElementById('ragQuery').addEventListener('keypress', (e) => {
+                if (e.ctrlKey && e.key === 'Enter') performRAG();
+            });
+        }
+
+        // Tab Switching
+        function switchTab(e) {
+            const tabName = e.target.dataset.tab;
+            
+            // Update buttons
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            e.target.classList.add('active');
+
+            // Update content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(tabName).classList.add('active');
+
+            currentTab = tabName;
+        }
+
+        // Health Check
+        async function checkHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+
+                document.getElementById('statusIndicator').classList.remove('disconnected');
+                document.getElementById('statusText').textContent = 'Connected';
+                document.getElementById('statsText').textContent = 
+                    `Docs: ${data.data.documents_count} | Embeddings: ${data.data.embeddings_count}`;
+            } catch (error) {
+                document.getElementById('statusIndicator').classList.add('disconnected');
+                document.getElementById('statusText').textContent = 'Disconnected';
+            }
+        }
+
+        // Messages
+        function showMessage(text, type = 'info') {
+            const container = document.getElementById('messagesContainer');
+            const message = document.createElement('div');
+            message.className = `message ${type}`;
+            message.textContent = text;
+            container.appendChild(message);
+            setTimeout(() => message.remove(), 5000);
+        }
+
+        // Upload Document
+        async function uploadDocument() {
+            const file = document.getElementById('fileInput').files[0];
+            if (!file) {
+                showMessage('Please select a file', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('title', document.getElementById('titleInput').value || file.name);
+            formData.append('source', document.getElementById('sourceInput').value);
+
+            try {
+                document.getElementById('uploadBtn').disabled = true;
+                showProgress('uploadProgress');
+
+                const response = await fetch(`${API_BASE}/documents`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showMessage(`Document uploaded: ${data.data.chunks_created} chunks created`, 'success');
+                    clearUpload();
+                    loadDocuments();
+                } else {
+                    showMessage(data.error, 'error');
+                }
+            } catch (error) {
+                showMessage(`Upload failed: ${error.message}`, 'error');
+            } finally {
+                document.getElementById('uploadBtn').disabled = false;
+                hideProgress('uploadProgress');
+            }
+        }
+
+        function clearUpload() {
+            document.getElementById('fileInput').value = '';
+            document.getElementById('titleInput').value = '';
+            document.getElementById('sourceInput').value = '';
+        }
+
+        // Load Documents
+        async function loadDocuments() {
+            try {
+                const response = await fetch(`${API_BASE}/documents`);
+                const data = await response.json();
+
+                const list = document.getElementById('documentsList');
+                list.innerHTML = '';
+
+                if (!data.data.documents || data.data.documents.length === 0) {
+                    list.innerHTML = '<p class="text-muted">No documents uploaded yet</p>';
+                    document.getElementById('docCount').textContent = '0';
+                    return;
+                }
+
+                document.getElementById('docCount').textContent = data.data.documents.length;
+
+                data.data.documents.forEach(doc => {
+                    const item = document.createElement('div');
+                    item.className = 'list-item';
+                    item.innerHTML = `
+                        <div class="list-item-info">
+                            <div class="list-item-title">${doc.title}</div>
+                            <div class="list-item-meta">${doc.chunks_count} chunks • ${doc.source || 'No source'}</div>
+                        </div>
+                        <div class="list-item-actions">
+                            <button class="danger" onclick="deleteDocument('${doc.id}')">Delete</button>
+                        </div>
+                    `;
+                    list.appendChild(item);
+                });
+            } catch (error) {
+                showMessage(`Failed to load documents: ${error.message}`, 'error');
+            }
+        }
+
+        async function deleteDocument(docId) {
+            if (!confirm('Delete this document?')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/documents/${docId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    showMessage('Document deleted', 'success');
+                    loadDocuments();
+                } else {
+                    showMessage('Failed to delete document', 'error');
+                }
+            } catch (error) {
+                showMessage(`Delete failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Search
+        async function performSearch() {
+            const query = document.getElementById('searchQuery').value;
+            if (!query) {
+                showMessage('Enter a search query', 'error');
+                return;
+            }
+
+            try {
+                document.getElementById('searchBtn').disabled = true;
+                showProgress('searchProgress');
+
+                const response = await fetch(`${API_BASE}/search`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        query,
+                        top_k: parseInt(document.getElementById('topK').value),
+                        search_type: document.getElementById('searchType').value,
+                        min_score: parseFloat(document.getElementById('minScore').value)
+                    })
+                });
+
+                const data = await response.json();
+                displaySearchResults(data.data);
+            } catch (error) {
+                showMessage(`Search failed: ${error.message}`, 'error');
+            } finally {
+                document.getElementById('searchBtn').disabled = false;
+                hideProgress('searchProgress');
+            }
+        }
+
+        function displaySearchResults(data) {
+            const container = document.getElementById('searchResults');
+            container.innerHTML = '';
+
+            if (!data.results || data.results.length === 0) {
+                container.innerHTML = '<p class="text-muted">No results found</p>';
+                return;
+            }
+
+            data.results.forEach(result => {
+                const item = document.createElement('div');
+                item.className = 'result-item';
+                item.innerHTML = `
+                    <div class="result-score">${(result.score * 100).toFixed(0)}%</div>
+                    <div class="result-text">${escapeHtml(result.text)}</div>
+                    <div class="result-source">From: ${result.metadata?.doc_title || 'Unknown'}</div>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        function clearSearch() {
+            document.getElementById('searchQuery').value = '';
+            document.getElementById('searchResults').innerHTML = '';
+        }
+
+        // RAG Query
+        async function performRAG() {
+            const query = document.getElementById('ragQuery').value;
+            if (!query) {
+                showMessage('Enter a question', 'error');
+                return;
+            }
+
+            try {
+                document.getElementById('ragBtn').disabled = true;
+                document.getElementById('ragResponse').textContent = '';
+                document.getElementById('ragMeta').classList.add('hidden');
+
+                const response = await fetch(`${API_BASE}/rag/query`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        query,
+                        model: document.getElementById('ragModel').value,
+                        temperature: parseFloat(document.getElementById('ragTemp').value),
+                        stream: true
+                    })
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let fullResponse = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.substring(6));
+                                if (data.type === 'delta') {
+                                    fullResponse += data.text;
+                                    document.getElementById('ragResponse').textContent = fullResponse;
+                                } else if (data.type === 'done') {
+                                    document.getElementById('ragMeta').innerHTML = `
+                                        <span>Tokens: ${data.total_tokens}</span>
+                                        <span>Time: ${(data.generation_time_ms / 1000).toFixed(1)}s</span>
+                                    `;
+                                    document.getElementById('ragMeta').classList.remove('hidden');
+                                }
+                            } catch (e) {
+                                // Ignore parse errors
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                showMessage(`RAG query failed: ${error.message}`, 'error');
+            } finally {
+                document.getElementById('ragBtn').disabled = false;
+            }
+        }
+
+        function clearRAG() {
+            document.getElementById('ragQuery').value = '';
+            document.getElementById('ragResponse').textContent = 'Ask a question to get started...';
+            document.getElementById('ragMeta').classList.add('hidden');
+        }
+
+        // Settings
+        async function loadConfig() {
+            try {
+                const response = await fetch(`${API_BASE}/config`);
+                const data = await response.json();
+
+                const content = document.getElementById('configContent');
+                content.innerHTML = `
+                    <table style="width: 100%; font-size: 14px;">
+                        <tr>
+                            <td style="padding: 8px; color: var(--text-secondary);">Embedding Model:</td>
+                            <td style="padding: 8px;">${data.data.embedding_model}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px; color: var(--text-secondary);">Embedding Dims:</td>
+                            <td style="padding: 8px;">${data.data.embedding_dims}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px; color: var(--text-secondary);">Chunk Size:</td>
+                            <td style="padding: 8px;">${data.data.chunk_size}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px; color: var(--text-secondary);">Chunk Overlap:</td>
+                            <td style="padding: 8px;">${data.data.chunk_overlap}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px; color: var(--text-secondary);">Default Model:</td>
+                            <td style="padding: 8px;">${data.data.default_model}</td>
+                        </tr>
+                    </table>
+                `;
+            } catch (error) {
+                console.error('Failed to load config:', error);
+            }
+        }
+
+        // Utilities
+        function showProgress(id) {
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        function hideProgress(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
