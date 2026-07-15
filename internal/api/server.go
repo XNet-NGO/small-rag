@@ -235,7 +235,7 @@ func (s *Server) handleRAGQuery(w http.ResponseWriter, r *http.Request) {
 	// Build system prompt
 	systemPrompt := req.SystemPrompt
 	if systemPrompt == "" {
-		systemPrompt = "You are a helpful assistant. Answer the user's question based on the following context from the knowledge base. If the context doesn't contain relevant information, say so."
+		systemPrompt = "You are a helpful assistant. Answer the user's question based on the following context from the knowledge base. If the context doesn't contain relevant information, say so. /no_think"
 	}
 	fullSystemPrompt := systemPrompt + "\n\nContext:\n---\n" + contextStr + "\n---"
 
@@ -426,7 +426,7 @@ func (s *Server) handleSearchAndRAG(w http.ResponseWriter, r *http.Request) {
 	// Build system prompt
 	systemPrompt := req.SystemPrompt
 	if systemPrompt == "" {
-		systemPrompt = "You are a helpful assistant. Answer the user's question based on the following context from the knowledge base. If the context doesn't contain relevant information, say so."
+		systemPrompt = "You are a helpful assistant. Answer the user's question based on the following context from the knowledge base. If the context doesn't contain relevant information, say so. /no_think"
 	}
 	fullSystemPrompt := systemPrompt + "\n\nContext:\n---\n" + contextStr + "\n---"
 

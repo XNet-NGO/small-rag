@@ -21,8 +21,17 @@ type Client struct {
 
 // Message represents a chat message with a role and content.
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role             string `json:"role"`
+	Content          string `json:"content"`
+	ReasoningContent string `json:"reasoning_content,omitempty"`
+}
+
+// GetContent returns the content, falling back to reasoning_content for thinking models
+func (m Message) GetContent() string {
+	if m.Content != "" {
+		return m.Content
+	}
+	return m.ReasoningContent
 }
 
 // ChatRequest represents a request to the chat completions endpoint.
@@ -165,7 +174,7 @@ func (c *Client) ChatCompletionStream(ctx context.Context, req ChatRequest, call
 
 		// Call callback with delta content
 		if len(chunk.Choices) > 0 {
-			delta := chunk.Choices[0].Delta.Content
+			delta := chunk.Choices[0].Delta.GetContent()
 			if delta != "" {
 				callback(delta, false, nil)
 			}
