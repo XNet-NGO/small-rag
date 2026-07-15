@@ -1,18 +1,27 @@
 package api
 
 import (
+	"context"
+	"crypto/md5"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/google/uuid"
+	"github.com/xnet-admin-1/small-rag/internal/batch"
 	"github.com/xnet-admin-1/small-rag/internal/config"
+	"github.com/xnet-admin-1/small-rag/internal/document"
 	"github.com/xnet-admin-1/small-rag/internal/embedding"
+	"github.com/xnet-admin-1/small-rag/internal/llm"
 	"github.com/xnet-admin-1/small-rag/internal/search"
 )
 
@@ -23,6 +32,8 @@ type Server struct {
 	router       chi.Router
 	embedding    *embedding.Engine
 	searchEngine *search.Engine
+	batchMgr     *batch.Manager
+	llmClient    *llm.Client
 }
 
 // NewServer creates a new API server
@@ -38,11 +49,21 @@ func NewServer(db *sql.DB, cfg *config.Config) *Server {
 	embeddingEngine := embedding.NewEngine(modelPath, cfg.EmbeddingDims)
 	embeddingEngine.SetLibPath(cfg.LibPath)
 
+	// Initialize LLM client
+	llmURL := os.Getenv("SMALL_RAG_LLM_URL")
+	if llmURL == "" {
+		llmURL = "http://localhost:11434/v1"
+	}
+	llmKey := os.Getenv("SMALL_RAG_LLM_KEY")
+	llmClient := llm.NewClient(llmURL, llmKey)
+
 	s := &Server{
 		db:           db,
 		cfg:          cfg,
 		embedding:    embeddingEngine,
 		searchEngine: search.NewEngine(db),
+		batchMgr:     batch.NewManager(),
+		llmClient:    llmClient,
 	}
 	s.setupRouter()
 	return s
@@ -68,6 +89,8 @@ func (s *Server) setupRouter() {
 		r.Post("/rag/query", s.handleRAGQuery)
 		r.Get("/config", s.handleGetConfig)
 		r.Post("/tools/search_and_rag", s.handleSearchAndRAG)
+		r.Post("/batch/index", s.handleBatchIndex)
+		r.Get("/batch/{batch_id}", s.handleBatchStatus)
 	})
 	s.router = r
 }
@@ -140,11 +163,197 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 
 func (s *Server) handleRAGQuery(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	fmt.Fprintf(w, "data: {\"type\":\"context\",\"chunks\":3}\n\n")
-	fmt.Fprintf(w, "data: {\"type\":\"delta\",\"text\":\"Sample response\"}\n\n")
-	fmt.Fprintf(w, "data: {\"type\":\"done\",\"total_tokens\":100}\n\n")
+	var req struct {
+		Query        string  `json:"query"`
+		TopK         int     `json:"top_k"`
+		Model        string  `json:"model"`
+		SystemPrompt string  `json:"system_prompt"`
+		Temperature  float64 `json:"temperature"`
+		Stream       *bool   `json:"stream"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Invalid request: %v", err),
+		})
+		return
+	}
+
+	if req.Query == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "query is required",
+		})
+		return
+	}
+
+	// Defaults
+	if req.TopK == 0 {
+		req.TopK = 3
+	}
+	if req.Model == "" {
+		req.Model = s.cfg.DefaultModel
+	}
+	if req.Temperature == 0 {
+		req.Temperature = 0.7
+	}
+	stream := true
+	if req.Stream != nil {
+		stream = *req.Stream
+	}
+
+	// Embed the query
+	queryEmbedding, err := s.embedding.Embed(req.Query)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Embedding failed: %v", err),
+		})
+		return
+	}
+
+	// Search for relevant chunks
+	searchStart := time.Now()
+	results, err := s.searchEngine.Search(req.Query, queryEmbedding, req.TopK, "hybrid", 0.3)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Search failed: %v", err),
+		})
+		return
+	}
+	searchTimeMs := time.Since(searchStart).Milliseconds()
+
+	// Build context from search results
+	var contextParts []string
+	for _, result := range results {
+		contextParts = append(contextParts, result.Text)
+	}
+	contextStr := strings.Join(contextParts, "\n---\n")
+
+	// Build system prompt
+	systemPrompt := req.SystemPrompt
+	if systemPrompt == "" {
+		systemPrompt = "You are a helpful assistant. Answer the user's question based on the following context from the knowledge base. If the context doesn't contain relevant information, say so."
+	}
+	fullSystemPrompt := systemPrompt + "\n\nContext:\n---\n" + contextStr + "\n---"
+
+	// Build messages
+	messages := []llm.Message{
+		{Role: "system", Content: fullSystemPrompt},
+		{Role: "user", Content: req.Query},
+	}
+
+	chatReq := llm.ChatRequest{
+		Model:       req.Model,
+		Messages:    messages,
+		Temperature: req.Temperature,
+	}
+
+	ctx := context.Background()
+
+	if stream {
+		// SSE streaming response
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			respondJSON(w, http.StatusInternalServerError, map[string]interface{}{
+				"success": false,
+				"error":   "Streaming not supported",
+			})
+			return
+		}
+
+		// Send context event
+		contextEvent, _ := json.Marshal(map[string]interface{}{
+			"type":           "context",
+			"chunks":         len(results),
+			"search_time_ms": searchTimeMs,
+		})
+		fmt.Fprintf(w, "data: %s\n\n", contextEvent)
+		flusher.Flush()
+
+		// Stream LLM response
+		resp, err := s.llmClient.ChatCompletionStream(ctx, chatReq, func(delta string, done bool, err error) {
+			if err != nil {
+				log.Printf("Stream error: %v", err)
+				return
+			}
+			if done {
+				return
+			}
+			deltaEvent, _ := json.Marshal(map[string]interface{}{
+				"type": "delta",
+				"text": delta,
+			})
+			fmt.Fprintf(w, "data: %s\n\n", deltaEvent)
+			flusher.Flush()
+		})
+
+		if err != nil {
+			errEvent, _ := json.Marshal(map[string]interface{}{
+				"type":  "error",
+				"error": err.Error(),
+			})
+			fmt.Fprintf(w, "data: %s\n\n", errEvent)
+			flusher.Flush()
+			return
+		}
+
+		// Send done event
+		totalTokens := 0
+		if resp != nil {
+			totalTokens = resp.Usage.TotalTokens
+		}
+		doneEvent, _ := json.Marshal(map[string]interface{}{
+			"type":         "done",
+			"total_tokens": totalTokens,
+		})
+		fmt.Fprintf(w, "data: %s\n\n", doneEvent)
+		flusher.Flush()
+	} else {
+		// Non-streaming response
+		resp, err := s.llmClient.ChatCompletion(ctx, chatReq)
+		if err != nil {
+			respondJSON(w, http.StatusInternalServerError, map[string]interface{}{
+				"success": false,
+				"error":   fmt.Sprintf("LLM request failed: %v", err),
+			})
+			return
+		}
+
+		answer := ""
+		if len(resp.Choices) > 0 {
+			answer = resp.Choices[0].Message.Content
+		}
+
+		// Build sources
+		sources := make([]map[string]interface{}, 0, len(results))
+		for _, result := range results {
+			source := map[string]interface{}{
+				"doc_id": result.DocID,
+				"score":  result.Score,
+				"text":   result.Text,
+			}
+			if title, ok := result.Metadata["title"]; ok {
+				source["title"] = title
+			}
+			sources = append(sources, source)
+		}
+
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"success": true,
+			"data": map[string]interface{}{
+				"answer":      answer,
+				"sources":     sources,
+				"tokens_used": resp.Usage.TotalTokens,
+			},
+		})
+	}
 }
 
 func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
@@ -152,7 +361,263 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSearchAndRAG(w http.ResponseWriter, r *http.Request) {
-	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "data": map[string]interface{}{"answer": "Not yet implemented"}})
+	var req struct {
+		Query        string  `json:"query"`
+		TopK         int     `json:"top_k"`
+		Model        string  `json:"model"`
+		SystemPrompt string  `json:"system_prompt"`
+		Temperature  float64 `json:"temperature"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Invalid request: %v", err),
+		})
+		return
+	}
+
+	if req.Query == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "query is required",
+		})
+		return
+	}
+
+	// Defaults
+	if req.TopK == 0 {
+		req.TopK = 3
+	}
+	if req.Model == "" {
+		req.Model = s.cfg.DefaultModel
+	}
+	if req.Temperature == 0 {
+		req.Temperature = 0.7
+	}
+
+	// Embed the query
+	queryEmbedding, err := s.embedding.Embed(req.Query)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Embedding failed: %v", err),
+		})
+		return
+	}
+
+	// Search for relevant chunks
+	results, err := s.searchEngine.Search(req.Query, queryEmbedding, req.TopK, "hybrid", 0.3)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Search failed: %v", err),
+		})
+		return
+	}
+
+	// Build context from search results
+	var contextParts []string
+	for _, result := range results {
+		contextParts = append(contextParts, result.Text)
+	}
+	contextStr := strings.Join(contextParts, "\n---\n")
+
+	// Build system prompt
+	systemPrompt := req.SystemPrompt
+	if systemPrompt == "" {
+		systemPrompt = "You are a helpful assistant. Answer the user's question based on the following context from the knowledge base. If the context doesn't contain relevant information, say so."
+	}
+	fullSystemPrompt := systemPrompt + "\n\nContext:\n---\n" + contextStr + "\n---"
+
+	// Build messages
+	messages := []llm.Message{
+		{Role: "system", Content: fullSystemPrompt},
+		{Role: "user", Content: req.Query},
+	}
+
+	chatReq := llm.ChatRequest{
+		Model:       req.Model,
+		Messages:    messages,
+		Temperature: req.Temperature,
+	}
+
+	// Call LLM (non-streaming)
+	ctx := context.Background()
+	resp, err := s.llmClient.ChatCompletion(ctx, chatReq)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("LLM request failed: %v", err),
+		})
+		return
+	}
+
+	answer := ""
+	if len(resp.Choices) > 0 {
+		answer = resp.Choices[0].Message.Content
+	}
+
+	// Build sources
+	sources := make([]map[string]interface{}, 0, len(results))
+	for _, result := range results {
+		source := map[string]interface{}{
+			"doc_id": result.DocID,
+			"score":  result.Score,
+		}
+		if title, ok := result.Metadata["title"]; ok {
+			source["title"] = title
+		}
+		sources = append(sources, source)
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"query":       req.Query,
+			"answer":      answer,
+			"sources":     sources,
+			"tokens_used": resp.Usage.TotalTokens,
+		},
+	})
+}
+
+// handleBatchIndex starts a batch document indexing job
+func (s *Server) handleBatchIndex(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Documents []batch.DocumentInput `json:"documents"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Invalid request: %v", err),
+		})
+		return
+	}
+
+	if len(req.Documents) == 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "No documents provided",
+		})
+		return
+	}
+
+	job := s.batchMgr.CreateBatch(req.Documents)
+
+	// processFunc reuses the same document pipeline as handleUploadDocument
+	processFunc := func(path, title string) (string, int, error) {
+		// Read file from disk
+		fileData, err := os.ReadFile(path)
+		if err != nil {
+			return "", 0, fmt.Errorf("failed to read file: %w", err)
+		}
+
+		// Determine filename for parser selection
+		filename := filepath.Base(path)
+
+		// Parse document content
+		content, err := document.ParseFile(filename, fileData)
+		if err != nil {
+			return "", 0, fmt.Errorf("failed to parse file: %w", err)
+		}
+
+		// Calculate content hash for dedup
+		hash := md5.Sum([]byte(content))
+		contentHash := hex.EncodeToString(hash[:])
+
+		// Check for duplicate
+		var existingID string
+		err = s.db.QueryRow("SELECT id FROM documents WHERE content_hash = ?", contentHash).Scan(&existingID)
+		if err == nil {
+			return "", 0, fmt.Errorf("document already indexed (ID: %s)", existingID)
+		} else if err != sql.ErrNoRows {
+			return "", 0, fmt.Errorf("database error: %w", err)
+		}
+
+		// Create and chunk document
+		docID := uuid.New().String()
+		if title == "" {
+			title = filename
+		}
+		doc := document.NewDocument(docID, title, path, content, s.cfg.ChunkSize, s.cfg.ChunkOverlap)
+		if err := doc.Chunk(); err != nil {
+			return "", 0, fmt.Errorf("failed to chunk document: %w", err)
+		}
+
+		// Save document to database
+		_, err = s.db.Exec(
+			`INSERT INTO documents (id, title, source, content, content_hash, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			doc.ID, doc.Title, doc.Source, doc.Content, contentHash, time.Now(), time.Now(),
+		)
+		if err != nil {
+			return "", 0, fmt.Errorf("failed to save document: %w", err)
+		}
+
+		// Save chunks and generate embeddings
+		for _, chunk := range doc.Chunks {
+			_, err := s.db.Exec(
+				`INSERT INTO chunks (id, doc_id, chunk_index, text, tokens, created_at)
+				 VALUES (?, ?, ?, ?, ?, ?)`,
+				chunk.ID, chunk.DocID, chunk.Index, chunk.Text, chunk.Tokens, time.Now(),
+			)
+			if err != nil {
+				log.Printf("Failed to save chunk: %v", err)
+				continue
+			}
+
+			emb, err := s.embedding.Embed(chunk.Text)
+			if err != nil {
+				log.Printf("Failed to generate embedding for chunk %s: %v", chunk.ID, err)
+				continue
+			}
+
+			embData := search.EncodeEmbedding(emb)
+			_, err = s.db.Exec(
+				`INSERT INTO embeddings (id, chunk_id, embedding, model_id, dims, created_at)
+				 VALUES (?, ?, ?, ?, ?, ?)`,
+				uuid.New().String(), chunk.ID, embData, s.cfg.EmbeddingModel, s.cfg.EmbeddingDims, time.Now(),
+			)
+			if err != nil {
+				log.Printf("Failed to save embedding for chunk %s: %v", chunk.ID, err)
+			}
+		}
+
+		return docID, len(doc.Chunks), nil
+	}
+
+	// Start background processing
+	go s.batchMgr.ProcessBatch(job, req.Documents, processFunc)
+
+	respondJSON(w, http.StatusAccepted, map[string]interface{}{
+		"success": true,
+		"data": map[string]interface{}{
+			"batch_id": job.ID,
+			"status":   job.Status,
+			"total":    job.Total,
+		},
+	})
+}
+
+// handleBatchStatus returns the current status of a batch job
+func (s *Server) handleBatchStatus(w http.ResponseWriter, r *http.Request) {
+	batchID := chi.URLParam(r, "batch_id")
+
+	job, err := s.batchMgr.GetBatch(batchID)
+	if err != nil {
+		respondJSON(w, http.StatusNotFound, map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"data":    job,
+	})
 }
 
 func respondJSON(w http.ResponseWriter, statusCode int, data interface{}) {
