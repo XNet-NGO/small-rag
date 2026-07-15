@@ -35,25 +35,24 @@ type Parser interface {
 type TextParser struct{}
 
 func (p *TextParser) Parse(data []byte, title string) (string, error) {
-	return string(data), nil
+	// Use the ParseText function from text.go
+	return ParseText(data)
 }
 
 // MarkdownParser handles markdown files
 type MarkdownParser struct{}
 
 func (p *MarkdownParser) Parse(data []byte, title string) (string, error) {
-	// For now, treat markdown as plain text
-	// In future: parse frontmatter, extract headers, etc.
-	return string(data), nil
+	// Use the ParseText function (markdown treated as text for now)
+	return ParseText(data)
 }
 
 // PDFParser handles PDF files
 type PDFParser struct{}
 
 func (p *PDFParser) Parse(data []byte, title string) (string, error) {
-	// TODO: Implement PDF text extraction
-	// For MVP, return error - will implement in Phase 2
-	return "", fmt.Errorf("PDF parsing not yet implemented - use TXT or MD files")
+	// Use the ParsePDF function from pdf.go
+	return ParsePDF(data)
 }
 
 // GetParser returns appropriate parser for file type
