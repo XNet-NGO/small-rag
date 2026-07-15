@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -14,6 +15,10 @@ const (
 	ModelURL  = "https://huggingface.co/PeterAM4/Qwen3-Embedding-0.6B-GGUF/resolve/main/Qwen3-Embedding-0.6B-Q4_K_M-imat.gguf"
 	ModelName = "qwen3-embedding-0.6b-q4_k_m.gguf"
 	ModelSize = 378_000_000 // ~378MB
+
+	// llama.cpp shared library release (matches yzma v1.19.0 / llama.cpp b9979+)
+	LlamaLibURL  = "https://github.com/hybridgroup/llama-cpp-builder/releases/download/b10361/llama-cpp-shared-libs-linux-x86_64.tar.gz"
+	LlamaLibName = "llama-cpp-shared-libs-linux-x86_64.tar.gz"
 )
 
 // Run executes the install command
@@ -28,7 +33,8 @@ func Run() error {
 	// Step 1: Create directory structure
 	fmt.Println("📁 Creating directory structure...")
 	dirs := []string{
-		filepath.Join(baseDir, "llama", "models"),
+		filepath.Join(baseDir, "lib"),
+		filepath.Join(baseDir, "models"),
 		filepath.Join(baseDir, ".small-rag-db"),
 	}
 	for _, dir := range dirs {
@@ -38,8 +44,24 @@ func Run() error {
 	}
 	fmt.Println("   ✅ Directories created")
 
-	// Step 2: Download model
-	modelPath := filepath.Join(baseDir, "llama", "models", ModelName)
+	// Step 2: Download llama.cpp shared libraries
+	libDir := filepath.Join(baseDir, "lib")
+	libMarker := filepath.Join(libDir, ".installed")
+	if _, err := os.Stat(libMarker); err == nil {
+		fmt.Println("\n📦 llama.cpp libraries already installed")
+		fmt.Println("   ✅ Skipping download")
+	} else {
+		fmt.Printf("\n⬇️  Downloading llama.cpp libraries...\n")
+		fmt.Printf("   Source: %s\n", LlamaLibURL)
+		if err := downloadAndExtract(LlamaLibURL, libDir); err != nil {
+			return fmt.Errorf("failed to download llama.cpp libraries: %w", err)
+		}
+		os.WriteFile(libMarker, []byte("installed"), 0644)
+		fmt.Println("   ✅ Libraries installed")
+	}
+
+	// Step 3: Download model
+	modelPath := filepath.Join(baseDir, "models", ModelName)
 	if _, err := os.Stat(modelPath); err == nil {
 		fmt.Printf("\n📦 Model already exists: %s\n", ModelName)
 		fmt.Println("   ✅ Skipping download")
@@ -52,7 +74,7 @@ func Run() error {
 		fmt.Println("\n   ✅ Model downloaded")
 	}
 
-	// Step 3: Write default config
+	// Step 4: Write default config
 	configPath := filepath.Join(baseDir, "config.json")
 	if _, err := os.Stat(configPath); err != nil {
 		fmt.Println("\n⚙️  Writing default config...")
@@ -62,7 +84,7 @@ func Run() error {
 		fmt.Println("   ✅ Config created")
 	}
 
-	// Step 4: Verify installation
+	// Step 5: Verify installation
 	fmt.Println("\n🔍 Verifying installation...")
 	if err := verify(baseDir); err != nil {
 		return fmt.Errorf("verification failed: %w", err)
@@ -77,9 +99,10 @@ func Run() error {
 	fmt.Printf("  ├── config.json\n")
 	fmt.Printf("  ├── .small-rag-db/\n")
 	fmt.Printf("  │   └── small-rag.db       (created on first run)\n")
-	fmt.Printf("  └── llama/\n")
-	fmt.Printf("      └── models/\n")
-	fmt.Printf("          └── %s\n", ModelName)
+	fmt.Printf("  ├── lib/\n")
+	fmt.Printf("  │   └── libllama.so (+ other .so files)\n")
+	fmt.Printf("  └── models/\n")
+	fmt.Printf("      └── %s\n", ModelName)
 	fmt.Printf("\nRun: ./small-rag\n")
 
 	return nil
@@ -213,7 +236,8 @@ func writeDefaultConfig(baseDir string) error {
 // verify checks that all required files exist
 func verify(baseDir string) error {
 	required := []string{
-		filepath.Join(baseDir, "llama", "models", ModelName),
+		filepath.Join(baseDir, "models", ModelName),
+		filepath.Join(baseDir, "lib", ".installed"),
 	}
 
 	for _, path := range required {
@@ -223,5 +247,44 @@ func verify(baseDir string) error {
 		fmt.Printf("   ✅ %s\n", filepath.Base(path))
 	}
 
+	return nil
+}
+
+// downloadAndExtract downloads a tar.gz and extracts it to destDir
+func downloadAndExtract(url, destDir string) error {
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("download failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download failed with status: %s", resp.Status)
+	}
+
+	// Save to temp file
+	tmpFile := filepath.Join(destDir, ".download.tar.gz")
+	out, err := os.Create(tmpFile)
+	if err != nil {
+		return err
+	}
+
+	written, err := io.Copy(out, resp.Body)
+	out.Close()
+	if err != nil {
+		os.Remove(tmpFile)
+		return err
+	}
+	fmt.Printf("   Downloaded %.1f MB\n", float64(written)/1024/1024)
+
+	// Extract using tar
+	fmt.Println("   Extracting...")
+	cmd := exec.Command("tar", "xzf", tmpFile, "-C", destDir)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		os.Remove(tmpFile)
+		return fmt.Errorf("extraction failed: %s: %w", string(output), err)
+	}
+
+	os.Remove(tmpFile)
 	return nil
 }

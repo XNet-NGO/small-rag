@@ -56,9 +56,9 @@ Directory structure (after install):
   ./small-rag              Main binary
   ./config.json            Configuration
   ./.small-rag-db/         SQLite database
-  ./llama/
-      └── models/
-          └── %s
+  ./lib/                   llama.cpp shared libraries
+  ./models/
+      └── %s
 `, version, install.ModelName)
 }
 
@@ -118,7 +118,7 @@ func cmdServe() {
 	}
 
 	// Set model path relative to binary
-	modelPath := filepath.Join(baseDir, "llama", "models", install.ModelName)
+	modelPath := filepath.Join(baseDir, "models", install.ModelName)
 
 	// Also check ~/.small-rag/models/ as fallback
 	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
@@ -130,6 +130,7 @@ func cmdServe() {
 	}
 
 	cfg.ModelPath = modelPath
+	cfg.LibPath = filepath.Join(baseDir, "lib")
 
 	// Initialize database
 	database, err := db.Open(filepath.Join(dataDir, "small-rag.db"))

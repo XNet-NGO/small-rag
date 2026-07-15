@@ -36,6 +36,7 @@ func NewServer(db *sql.DB, cfg *config.Config) *Server {
 
 	// Initialize embedding engine
 	embeddingEngine := embedding.NewEngine(modelPath, cfg.EmbeddingDims)
+	embeddingEngine.SetLibPath(cfg.LibPath)
 
 	s := &Server{
 		db:           db,

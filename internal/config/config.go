@@ -33,6 +33,7 @@ type Config struct {
 
 	// Runtime paths (set at startup, not serialized)
 	ModelPath string `json:"-"`
+	LibPath   string `json:"-"`
 }
 
 // DefaultConfig returns default configuration
