@@ -172,9 +172,9 @@ func (c *Client) ChatCompletionStream(ctx context.Context, req ChatRequest, call
 			finalResponse.Usage = chunk.Usage
 		}
 
-		// Call callback with delta content
+		// Call callback with delta content (skip reasoning_content - only forward actual content)
 		if len(chunk.Choices) > 0 {
-			delta := chunk.Choices[0].Delta.GetContent()
+			delta := chunk.Choices[0].Delta.Content
 			if delta != "" {
 				callback(delta, false, nil)
 			}
