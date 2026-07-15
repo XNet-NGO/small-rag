@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -25,10 +27,17 @@ type Server struct {
 
 // NewServer creates a new API server
 func NewServer(db *sql.DB, cfg *config.Config) *Server {
+	// Get model path
+	homeDir, _ := os.UserHomeDir()
+	modelPath := filepath.Join(homeDir, ".small-rag/models/qwen3-embedding-0.6b-q4_k_m.gguf")
+	
+	// Initialize embedding engine
+	embeddingEngine := embedding.NewEngine(modelPath, cfg.EmbeddingDims)
+	
 	s := &Server{
 		db:        db,
 		cfg:       cfg,
-		embedding: embedding.NewEngine("", cfg.EmbeddingDims),
+		embedding: embeddingEngine,
 		search:    search.NewEngine(db),
 	}
 	s.setupRouter()
@@ -72,6 +81,13 @@ func corsMiddleware(next http.Handler) http.Handler {
 }
 
 func (s *Server) Start(port int) error {
+	// Initialize embedding engine
+	log.Printf("Initializing embedding engine...")
+	if err := s.embedding.Initialize(); err != nil {
+		return fmt.Errorf("failed to initialize embedding engine: %w", err)
+	}
+	log.Printf("Embedding engine ready")
+	
 	addr := fmt.Sprintf(":%d", port)
 	log.Printf("Starting server on %s", addr)
 	return http.ListenAndServe(addr, s.router)
