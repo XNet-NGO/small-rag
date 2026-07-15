@@ -120,17 +120,22 @@ func (d *Document) Chunk() error {
 
 			// Start new chunk with overlap
 			if d.Overlap > 0 && len(chunks) > 0 {
-				// Keep last part of previous chunk for overlap
+				// Calculate overlap in characters (Overlap tokens * 4 chars/token)
+				overlapChars := d.Overlap * 4
 				prevText := chunks[len(chunks)-1].Text
-				overlapTokens := (len(prevText) * d.Overlap) / d.ChunkSize
-				overlapText := prevText
-				if len(prevText) > overlapTokens {
-					overlapText = prevText[len(prevText)-overlapTokens:]
+				
+				// Take last N characters for overlap
+				overlapText := ""
+				if len(prevText) > overlapChars {
+					overlapText = prevText[len(prevText)-overlapChars:]
+				} else {
+					overlapText = prevText
 				}
+				
 				currentChunk.Reset()
 				currentChunk.WriteString(overlapText)
 				currentChunk.WriteString(" ")
-				currentTokens = (len(overlapText) / 4) + sentenceTokens
+				currentTokens = TokenCount(overlapText) + sentenceTokens
 			} else {
 				currentChunk.Reset()
 				currentTokens = sentenceTokens
