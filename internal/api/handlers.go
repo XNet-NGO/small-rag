@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"time"
 
@@ -158,7 +159,24 @@ func (s *Server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 
 	// Generate embeddings
 	embeddingsCreated := 0
-	for _, chunk := range doc.Chunks {
+	totalChunks := len(doc.Chunks)
+	startEmbed := time.Now()
+	for i, chunk := range doc.Chunks {
+		// Log progress every 10 chunks or for large documents
+		if totalChunks > 10 && (i%10 == 0 || i == totalChunks-1) {
+			elapsed := time.Since(startEmbed)
+			rate := float64(0)
+			if i > 0 {
+				rate = float64(i) / elapsed.Seconds()
+			}
+			remaining := time.Duration(0)
+			if rate > 0 {
+				remaining = time.Duration(float64(totalChunks-i)/rate) * time.Second
+			}
+			log.Printf("Embedding progress: %d/%d chunks (%.1f chunks/sec, ~%v remaining)",
+				i+1, totalChunks, rate, remaining.Round(time.Second))
+		}
+
 		// Generate embedding
 		embedding, err := s.embedding.Embed(chunk.Text)
 		if err != nil {
@@ -182,6 +200,9 @@ func (s *Server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 		}
 
 		embeddingsCreated++
+	}
+	if totalChunks > 10 {
+		log.Printf("Embedding complete: %d/%d in %v", embeddingsCreated, totalChunks, time.Since(startEmbed).Round(time.Millisecond))
 	}
 
 	// Return response
