@@ -4,7 +4,6 @@ import (
 	"crypto/md5"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -342,9 +341,4 @@ func (s *Server) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Helper function to respond with JSON
-func respondJSON(w http.ResponseWriter, statusCode int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(data)
-}
+
