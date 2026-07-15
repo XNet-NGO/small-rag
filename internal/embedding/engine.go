@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"runtime"
 	"sync"
 
 	"github.com/hybridgroup/yzma/pkg/llama"
@@ -97,6 +98,8 @@ func (e *Engine) Initialize() error {
 	cparams := llama.ContextDefaultParams()
 	cparams.NCtx = 512
 	cparams.NBatch = 512
+	cparams.NThreads = int32(runtime.NumCPU())
+	cparams.NThreadsBatch = int32(runtime.NumCPU())
 	cparams.Embeddings = 1 // enable embeddings (uint8 bool)
 
 	ctx, err := llama.InitFromModel(model, cparams)

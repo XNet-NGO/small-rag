@@ -13,14 +13,14 @@ import (
 
 const (
 	// Embedding model
-	ModelURL  = "https://huggingface.co/PeterAM4/Qwen3-Embedding-0.6B-GGUF/resolve/main/Qwen3-Embedding-0.6B-Q4_K_M-imat.gguf"
-	ModelName = "qwen3-embedding-0.6b-q4_k_m.gguf"
-	ModelSize = 378_000_000 // ~378MB
+	ModelURL  = "https://huggingface.co/second-state/All-MiniLM-L6-v2-Embedding-GGUF/resolve/main/all-MiniLM-L6-v2-Q8_0.gguf"
+	ModelName = "all-MiniLM-L6-v2-Q8_0.gguf"
+	ModelSize = 25_000_000 // ~25MB
 
 	// Chat/LLM model
-	ChatModelURL  = "https://huggingface.co/unsloth/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q4_K_M.gguf"
-	ChatModelName = "qwen3-0.6b-q4_k_m.gguf"
-	ChatModelSize = 378_000_000 // ~378MB
+	ChatModelURL  = "https://huggingface.co/tiiuae/Falcon-H1-Tiny-90M-Instruct-GGUF/resolve/main/Falcon-H1-Tiny-90M-Instruct-Q8_0.gguf"
+	ChatModelName = "falcon-h1-tiny-90m-instruct-Q8_0.gguf"
+	ChatModelSize = 94_000_000 // ~94MB
 
 	// llama.cpp shared library release (matches yzma v1.19.0 / llama.cpp b9979+)
 	LlamaLibURL  = "https://github.com/hybridgroup/llama-cpp-builder/releases/download/b10361/llama-cpp-shared-libs-linux-x86_64.tar.gz"
@@ -238,8 +238,8 @@ func printProgress(downloaded, total int64, startTime time.Time) {
 // writeDefaultConfig writes a default config.json
 func writeDefaultConfig(baseDir string) error {
 	config := `{
-  "embedding_model": "qwen3-embedding-0.6b",
-  "embedding_dims": 1024,
+  "embedding_model": "all-MiniLM-L6-v2",
+  "embedding_dims": 384,
   "chunk_size": 512,
   "chunk_overlap": 128,
   "search_types": ["semantic", "keyword", "hybrid"],

@@ -39,8 +39,8 @@ type Config struct {
 // DefaultConfig returns default configuration
 func DefaultConfig() *Config {
 	return &Config{
-		EmbeddingModel:     "qwen3-embedding-0.6b",
-		EmbeddingDims:      1024,
+		EmbeddingModel:     "all-MiniLM-L6-v2",
+		EmbeddingDims:      384,
 		ChunkSize:          512,
 		ChunkOverlap:       128,
 		SearchTypes:        []string{"semantic", "keyword", "hybrid"},
