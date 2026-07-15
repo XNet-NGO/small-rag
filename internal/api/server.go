@@ -715,7 +715,7 @@ button:disabled {opacity:.5}
 <div class="card">
 <div class="title">Ask Question</div>
 <div class="form-group"><label>Question</label><textarea id="ragQuery" placeholder="Ask a question..."></textarea></div>
-<div class="form-group"><label>Model</label><select id="model"><option>gpt-4</option><option>claude-3-opus</option><option>gpt-3.5-turbo</option></select></div>
+<div class="form-group"><label>Model</label><select id="model"><option>qwen3-0.6b</option><option>default</option></select></div>
 <div class="buttons"><button id="ragBtn">Ask</button><button class="sec" id="clearRagBtn">Clear</button></div>
 </div>
 <div class="card">
