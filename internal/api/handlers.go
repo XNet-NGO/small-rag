@@ -161,8 +161,30 @@ func (s *Server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 	embeddingsCreated := 0
 	totalChunks := len(doc.Chunks)
 	startEmbed := time.Now()
+
+	// Check if client wants streaming progress
+	streaming := r.URL.Query().Get("stream") == "true"
+	var flusher http.Flusher
+	if streaming {
+		f, ok := w.(http.Flusher)
+		if ok {
+			flusher = f
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+			// Send initial event
+			evt, _ := json.Marshal(map[string]interface{}{
+				"type": "start", "total_chunks": totalChunks, "doc_id": doc.ID, "title": doc.Title,
+			})
+			fmt.Fprintf(w, "data: %s\n\n", evt)
+			flusher.Flush()
+		} else {
+			streaming = false
+		}
+	}
+
 	for i, chunk := range doc.Chunks {
-		// Log progress every 10 chunks or for large documents
+		// Log progress every 10 chunks for large documents
 		if totalChunks > 10 && (i%10 == 0 || i == totalChunks-1) {
 			elapsed := time.Since(startEmbed)
 			rate := float64(0)
@@ -175,6 +197,17 @@ func (s *Server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 			}
 			log.Printf("Embedding progress: %d/%d chunks (%.1f chunks/sec, ~%v remaining)",
 				i+1, totalChunks, rate, remaining.Round(time.Second))
+
+			// Send SSE progress event
+			if streaming {
+				evt, _ := json.Marshal(map[string]interface{}{
+					"type": "progress", "current": i + 1, "total": totalChunks,
+					"rate": fmt.Sprintf("%.1f", rate),
+					"eta":  remaining.Round(time.Second).String(),
+				})
+				fmt.Fprintf(w, "data: %s\n\n", evt)
+				flusher.Flush()
+			}
 		}
 
 		// Generate embedding
@@ -203,6 +236,18 @@ func (s *Server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 	}
 	if totalChunks > 10 {
 		log.Printf("Embedding complete: %d/%d in %v", embeddingsCreated, totalChunks, time.Since(startEmbed).Round(time.Millisecond))
+	}
+
+	// Send final response
+	if streaming {
+		evt, _ := json.Marshal(map[string]interface{}{
+			"type": "done", "doc_id": doc.ID, "title": doc.Title,
+			"chunks_created": totalChunks, "embeddings_created": embeddingsCreated,
+			"duration_ms": time.Since(startEmbed).Milliseconds(),
+		})
+		fmt.Fprintf(w, "data: %s\n\n", evt)
+		flusher.Flush()
+		return
 	}
 
 	// Return response

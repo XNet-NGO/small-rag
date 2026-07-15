@@ -706,25 +706,49 @@
 
             try {
                 document.getElementById('uploadBtn').disabled = true;
+                document.getElementById('uploadBtn').textContent = 'Processing...';
                 showProgress('uploadProgress');
 
-                const response = await fetch(`${API_BASE}/documents`, {
+                const response = await fetch(`${API_BASE}/documents?stream=true`, {
                     method: 'POST',
                     body: formData
                 });
 
-                const data = await response.json();
-                if (data.success) {
-                    showMessage(`Document uploaded: ${data.data.chunks_created} chunks created`, 'success');
-                    clearUpload();
-                    loadDocuments();
-                } else {
-                    showMessage(data.error, 'error');
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let reading = true;
+
+                while (reading) {
+                    const { done, value } = await reader.read();
+                    if (done) { reading = false; break; }
+
+                    const text = decoder.decode(value);
+                    const lines = text.split('\n');
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.substring(6));
+                                if (data.type === 'start') {
+                                    document.getElementById('uploadBtn').textContent = `0/${data.total_chunks} chunks...`;
+                                } else if (data.type === 'progress') {
+                                    document.getElementById('uploadBtn').textContent = `${data.current}/${data.total} (${data.rate}/s, ETA ${data.eta})`;
+                                    // Update progress bar
+                                    const pct = (data.current / data.total) * 100;
+                                    document.querySelector('#uploadProgress .progress-fill').style.width = pct + '%';
+                                } else if (data.type === 'done') {
+                                    showMessage(`Indexed: ${data.chunks_created} chunks, ${data.embeddings_created} embeddings in ${(data.duration_ms/1000).toFixed(1)}s`, 'success');
+                                    clearUpload();
+                                    loadDocuments();
+                                }
+                            } catch (e) {}
+                        }
+                    }
                 }
             } catch (error) {
                 showMessage(`Upload failed: ${error.message}`, 'error');
             } finally {
                 document.getElementById('uploadBtn').disabled = false;
+                document.getElementById('uploadBtn').textContent = 'Upload';
                 hideProgress('uploadProgress');
             }
         }
