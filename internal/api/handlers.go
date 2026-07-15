@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -340,6 +341,78 @@ func (s *Server) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleSearch performs hybrid search
+func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		respondJSON(w, http.StatusMethodNotAllowed, DocumentResponse{
+			Success: false,
+			Error:   "POST required",
+			Code:    405,
+		})
+		return
+	}
+
+	var req struct {
+		Query      string  `json:"query"`
+		SearchType string  `json:"search_type"` // semantic, keyword, hybrid
+		TopK       int     `json:"top_k"`
+		MinScore   float32 `json:"min_score"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSON(w, http.StatusBadRequest, DocumentResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Invalid request: %v", err),
+			Code:    400,
+		})
+		return
+	}
+
+	// Defaults
+	if req.SearchType == "" {
+		req.SearchType = "hybrid"
+	}
+	if req.TopK == 0 {
+		req.TopK = 10
+	}
+	if req.MinScore == 0 {
+		req.MinScore = 0.3
+	}
+
+	// Get query embedding (only for semantic/hybrid search)
+	var queryEmbedding []float32
+	if req.SearchType != "keyword" {
+		embedding, err := s.embedding.Embed(req.Query)
+		if err != nil {
+			// Fall back to keyword search
+			req.SearchType = "keyword"
+		} else {
+			queryEmbedding = embedding
+		}
+	}
+
+	// Perform search
+	results, err := s.searchEngine.Search(req.Query, queryEmbedding, req.TopK, req.SearchType, req.MinScore)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, DocumentResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Search failed: %v", err),
+			Code:    500,
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, DocumentResponse{
+		Success: true,
+		Data: map[string]interface{}{
+			"query":       req.Query,
+			"search_type": req.SearchType,
+			"count":       len(results),
+			"results":     results,
+		},
+	})
 }
 
 

@@ -18,11 +18,11 @@ import (
 
 // Server represents the HTTP API server
 type Server struct {
-	db        *sql.DB
-	cfg       *config.Config
-	router    chi.Router
-	embedding *embedding.Engine
-	search    *search.Engine
+	db           *sql.DB
+	cfg          *config.Config
+	router       chi.Router
+	embedding    *embedding.Engine
+	searchEngine *search.Engine
 }
 
 // NewServer creates a new API server
@@ -35,10 +35,10 @@ func NewServer(db *sql.DB, cfg *config.Config) *Server {
 	embeddingEngine := embedding.NewEngine(modelPath, cfg.EmbeddingDims)
 	
 	s := &Server{
-		db:        db,
-		cfg:       cfg,
-		embedding: embeddingEngine,
-		search:    search.NewEngine(db),
+		db:           db,
+		cfg:          cfg,
+		embedding:    embeddingEngine,
+		searchEngine: search.NewEngine(db),
 	}
 	s.setupRouter()
 	return s
@@ -118,29 +118,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Query      string  `json:"query"`
-		TopK       int     `json:"top_k"`
-		SearchType string  `json:"search_type"`
-		MinScore   float32 `json:"min_score"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]interface{}{"success": false, "error": "Invalid request"})
-		return
-	}
-	queryEmbedding, err := s.embedding.Embed(req.Query)
-	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]interface{}{"success": false, "error": "Failed to embed query"})
-		return
-	}
-	results, err := s.search.Search(req.Query, queryEmbedding, req.TopK, req.SearchType, req.MinScore)
-	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]interface{}{"success": false, "error": fmt.Sprintf("Search failed: %v", err)})
-		return
-	}
-	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "data": map[string]interface{}{"query": req.Query, "results": results}})
-}
+
 
 func (s *Server) handleRAGQuery(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")

@@ -115,9 +115,9 @@ func (e *Engine) keywordSearch(query string, topK int, minScore float32) ([]Resu
 	// Search using FTS5
 	rows, err := e.db.Query(`
 		SELECT c.id, c.doc_id, c.text
-		FROM chunks_fts
-		JOIN chunks c ON chunks_fts.chunk_id = c.id
-		WHERE chunks_fts MATCH ?
+		FROM chunks_fts fts
+		JOIN chunks c ON fts.rowid = c.rowid
+		WHERE fts MATCH ?
 		LIMIT ?
 	`, ftsQuery.String(), topK)
 	if err != nil {
