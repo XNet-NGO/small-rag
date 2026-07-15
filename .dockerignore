@@ -1,0 +1,8 @@
+.git
+*.md
+lib/
+models/
+.small-rag-db/
+small-rag
+server.log
+*.log

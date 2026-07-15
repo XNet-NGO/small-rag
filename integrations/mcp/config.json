@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "small-rag": {
+      "command": "./small-rag",
+      "args": ["mcp"],
+      "env": {
+        "YZMA_LIB": "./lib",
+        "SMALL_RAG_LLM_URL": "http://localhost:11434/v1"
+      }
+    }
+  }
+}

@@ -1,0 +1,48 @@
+# AX Agent Configuration with Small-RAG Integration
+# 
+# This configures an AX agent to use small-rag as a knowledge base.
+# Ensure small-rag is running: ./small-rag -port 8765
+
+agent:
+  name: "research-agent"
+  model: "gpt-4"
+  system_prompt: |
+    You are a research assistant with access to a knowledge base.
+    Use the rag_search tool to find relevant information.
+    Use the rag_query tool when you need a synthesized answer.
+    Always cite your sources when using information from the knowledge base.
+
+tools:
+  - name: rag_search
+    type: http
+    endpoint: http://localhost:8765/api/v1/search
+    method: POST
+    headers:
+      Content-Type: application/json
+    body_template: |
+      {
+        "query": "{{query}}",
+        "top_k": {{top_k | default: 5}},
+        "search_type": "{{search_type | default: 'hybrid'}}"
+      }
+
+  - name: rag_query
+    type: http
+    endpoint: http://localhost:8765/api/v1/tools/search_and_rag
+    method: POST
+    headers:
+      Content-Type: application/json
+    body_template: |
+      {
+        "query": "{{query}}",
+        "top_k": {{top_k | default: 3}}
+      }
+
+  - name: document_index
+    type: http
+    endpoint: http://localhost:8765/api/v1/documents
+    method: POST
+    content_type: multipart/form-data
+    fields:
+      title: "{{title}}"
+      content: "{{content}}"
