@@ -27,13 +27,16 @@ type Server struct {
 
 // NewServer creates a new API server
 func NewServer(db *sql.DB, cfg *config.Config) *Server {
-	// Get model path
-	homeDir, _ := os.UserHomeDir()
-	modelPath := filepath.Join(homeDir, ".small-rag/models/qwen3-embedding-0.6b-q4_k_m.gguf")
-	
+	// Get model path from config, fallback to legacy location
+	modelPath := cfg.ModelPath
+	if modelPath == "" {
+		homeDir, _ := os.UserHomeDir()
+		modelPath = filepath.Join(homeDir, ".small-rag/models/qwen3-embedding-0.6b-q4_k_m.gguf")
+	}
+
 	// Initialize embedding engine
 	embeddingEngine := embedding.NewEngine(modelPath, cfg.EmbeddingDims)
-	
+
 	s := &Server{
 		db:           db,
 		cfg:          cfg,
@@ -55,6 +58,7 @@ func (s *Server) setupRouter() {
 	r.Get("/index.html", s.handleWebUI)
 	r.Get("/health", s.handleHealth)
 	r.Route("/api/v1", func(r chi.Router) {
+		r.Get("/health", s.handleHealth)
 		r.Get("/documents", s.handleListDocuments)
 		r.Post("/documents", s.handleUploadDocument)
 		r.Get("/documents/{doc_id}", s.handleGetDocument)
@@ -105,6 +109,20 @@ type HealthResponse struct {
 
 func (s *Server) handleWebUI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	// Try to serve web/index.html from disk (relative to binary)
+	candidates := []string{
+		"web/index.html",
+		filepath.Join(filepath.Dir(os.Args[0]), "web", "index.html"),
+	}
+	for _, path := range candidates {
+		if data, err := os.ReadFile(path); err == nil {
+			w.Write(data)
+			return
+		}
+	}
+
+	// Fallback to inline HTML
 	fmt.Fprint(w, htmlUI)
 }
 
@@ -267,7 +285,7 @@ async function upload(){const f=document.getElementById('file').files[0];if(!f){
 async function loadDocs(){try{const r=await fetch(API+'/documents');const d=await r.json();const l=document.getElementById('docList');l.innerHTML='';if(!d.data.documents||d.data.documents.length===0){l.innerHTML='<p class="muted">No documents</p>';document.getElementById('count').textContent='0';return}document.getElementById('count').textContent=d.data.documents.length;d.data.documents.forEach(doc=>{const item=document.createElement('div');item.className='item';item.innerHTML='<div><strong>'+doc.title+'</strong><br><small>'+doc.chunks_count+' chunks</small></div><button class="danger" onclick="del('+JSON.stringify(doc.id)+')">Delete</button>';l.appendChild(item)})}catch(e){msg('Failed to load: '+e.message,'err')}}
 async function del(id){if(!confirm('Delete?'))return;try{await fetch(API+'/documents/'+id,{method:'DELETE'});msg('Deleted','ok');loadDocs()}catch(e){msg('Delete failed: '+e.message,'err')}}
 async function search(){const q=document.getElementById('query').value;if(!q){msg('Enter query','err');return}try{document.getElementById('searchBtn').disabled=true;const r=await fetch(API+'/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,top_k:5,search_type:'hybrid'})});const d=await r.json();const c=document.getElementById('results');c.innerHTML='';if(!d.data.results||d.data.results.length===0){c.innerHTML='<p class="muted">No results</p>';return}d.data.results.forEach(res=>{const item=document.createElement('div');item.className='result';item.innerHTML='<div class="score">'+(res.score*100).toFixed(0)+'%</div><div>'+res.text+'</div>';c.appendChild(item)})}catch(e){msg('Search failed: '+e.message,'err')}finally{document.getElementById('searchBtn').disabled=false}}
-async function rag(){const q=document.getElementById('ragQuery').value;if(!q){msg('Enter question','err');return}try{document.getElementById('ragBtn').disabled=true;document.getElementById('ragResponse').textContent='Loading...';const r=await fetch(API+'/rag/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,model:document.getElementById('model').value,stream:true})});const reader=r.body.getReader();const decoder=new TextDecoder();let resp='';while(true){const {done,value}=await reader.read();if(done)break;const chunk=decoder.decode(value);const lines=chunk.split('\n');for(const line of lines){if(line.startsWith('data: ')){try{const data=JSON.parse(line.substring(6));if(data.type==='delta'){resp+=data.text;document.getElementById('ragResponse').textContent=resp}else if(data.type==='done'){}}}catch(e){}}}}}catch(e){msg('RAG failed: '+e.message,'err')}finally{document.getElementById('ragBtn').disabled=false}}
+async function rag(){var q=document.getElementById('ragQuery').value;if(!q){msg('Enter question','err');return}try{document.getElementById('ragBtn').disabled=true;document.getElementById('ragResponse').textContent='Loading...';var r=await fetch(API+'/rag/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,model:document.getElementById('model').value,stream:true})});var reader=r.body.getReader();var decoder=new TextDecoder();var resp='';var reading=true;while(reading){var chunk=await reader.read();if(chunk.done){reading=false;break}var text=decoder.decode(chunk.value);var lines=text.split('\n');for(var i=0;i<lines.length;i++){var line=lines[i];if(line.startsWith('data: ')){try{var data=JSON.parse(line.substring(6));if(data.type==='delta'){resp+=data.text;document.getElementById('ragResponse').textContent=resp}}catch(pe){}}}}}catch(e){msg('RAG failed: '+e.message,'err')}finally{document.getElementById('ragBtn').disabled=false}}
 async function loadConfig(){try{const r=await fetch(API+'/config');const d=await r.json();document.getElementById('config').innerHTML='Model: '+d.data.embedding_model+'<br>Chunk Size: '+d.data.chunk_size+'<br>Overlap: '+d.data.chunk_overlap}catch(e){}}
 </script>
 </body>

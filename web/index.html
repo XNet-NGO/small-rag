@@ -670,7 +670,7 @@
         // Health Check
         async function checkHealth() {
             try {
-                const response = await fetch(`${API_BASE}/health`);
+                const response = await fetch('http://localhost:8765/health');
                 const data = await response.json();
 
                 document.getElementById('statusIndicator').classList.remove('disconnected');

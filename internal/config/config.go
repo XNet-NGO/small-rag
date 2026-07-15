@@ -30,13 +30,16 @@ type Config struct {
 	// Feature flags
 	EnableCache bool `json:"enable_cache"`
 	EnableSSE   bool `json:"enable_sse"`
+
+	// Runtime paths (set at startup, not serialized)
+	ModelPath string `json:"-"`
 }
 
 // DefaultConfig returns default configuration
 func DefaultConfig() *Config {
 	return &Config{
 		EmbeddingModel:     "qwen3-embedding-0.6b",
-		EmbeddingDims:      384,
+		EmbeddingDims:      1024,
 		ChunkSize:          512,
 		ChunkOverlap:       128,
 		SearchTypes:        []string{"semantic", "keyword", "hybrid"},
@@ -80,4 +83,18 @@ func (c *Config) Save(dataDir string) error {
 	configPath := filepath.Join(dataDir, "config.json")
 	data, _ := json.MarshalIndent(c, "", "  ")
 	return os.WriteFile(configPath, data, 0644)
+}
+
+// LoadFromFile loads configuration from a specific file path
+func LoadFromFile(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg := DefaultConfig()
+	if err := json.Unmarshal(data, cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
 }

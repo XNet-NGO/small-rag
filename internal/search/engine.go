@@ -107,17 +107,18 @@ func (e *Engine) keywordSearch(query string, topK int, minScore float32) ([]Resu
 	var ftsQuery strings.Builder
 	for i, term := range terms {
 		if i > 0 {
-			ftsQuery.WriteString(" AND ")
+			ftsQuery.WriteString(" OR ")
 		}
 		ftsQuery.WriteString(term)
 	}
 
-	// Search using FTS5
+	// Search using FTS5 (join via rowid)
 	rows, err := e.db.Query(`
 		SELECT c.id, c.doc_id, c.text
-		FROM chunks_fts fts
-		JOIN chunks c ON fts.rowid = c.rowid
-		WHERE fts MATCH ?
+		FROM chunks_fts
+		JOIN chunks c ON chunks_fts.rowid = c.rowid
+		WHERE chunks_fts MATCH ?
+		ORDER BY rank
 		LIMIT ?
 	`, ftsQuery.String(), topK)
 	if err != nil {
