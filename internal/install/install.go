@@ -13,9 +13,9 @@ import (
 
 const (
 	// Embedding model
-	ModelURL  = "https://huggingface.co/second-state/All-MiniLM-L6-v2-Embedding-GGUF/resolve/main/all-MiniLM-L6-v2-Q8_0.gguf"
-	ModelName = "all-MiniLM-L6-v2-Q8_0.gguf"
-	ModelSize = 25_000_000 // ~25MB
+	ModelURL  = "https://huggingface.co/second-state/All-MiniLM-L6-v2-Embedding-GGUF/resolve/main/all-MiniLM-L6-v2-Q4_K_M.gguf"
+	ModelName = "all-MiniLM-L6-v2-Q4_K_M.gguf"
+	ModelSize = 21_000_000 // ~25MB
 
 	// Chat/LLM model
 	ChatModelURL  = "https://huggingface.co/tiiuae/Falcon-H1-Tiny-90M-Instruct-GGUF/resolve/main/Falcon-H1-Tiny-90M-Instruct-Q8_0.gguf"
@@ -240,8 +240,8 @@ func writeDefaultConfig(baseDir string) error {
 	config := `{
   "embedding_model": "all-MiniLM-L6-v2",
   "embedding_dims": 384,
-  "chunk_size": 512,
-  "chunk_overlap": 128,
+  "chunk_size": 1024,
+  "chunk_overlap": 256,
   "search_types": ["semantic", "keyword", "hybrid"],
   "min_score": 0.3,
   "default_llm_provider": "openai",

@@ -41,8 +41,8 @@ func DefaultConfig() *Config {
 	return &Config{
 		EmbeddingModel:     "all-MiniLM-L6-v2",
 		EmbeddingDims:      384,
-		ChunkSize:          512,
-		ChunkOverlap:       128,
+		ChunkSize:          1024,
+		ChunkOverlap:       256,
 		SearchTypes:        []string{"semantic", "keyword", "hybrid"},
 		MinScore:           0.3,
 		DefaultLLMProvider: "openai",

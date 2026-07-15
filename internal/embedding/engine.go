@@ -96,8 +96,8 @@ func (e *Engine) Initialize() error {
 
 	// Create context with embedding support
 	cparams := llama.ContextDefaultParams()
-	cparams.NCtx = 512
-	cparams.NBatch = 512
+	cparams.NCtx = 256
+	cparams.NBatch = 256
 	cparams.NThreads = int32(runtime.NumCPU())
 	cparams.NThreadsBatch = int32(runtime.NumCPU())
 	cparams.Embeddings = 1 // enable embeddings (uint8 bool)
@@ -148,8 +148,8 @@ func (e *Engine) Embed(text string) ([]float32, error) {
 	}
 
 	// Truncate to context size
-	if len(tokens) > 512 {
-		tokens = tokens[:512]
+	if len(tokens) > 256 {
+		tokens = tokens[:256]
 	}
 
 	// Clear memory
