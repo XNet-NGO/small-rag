@@ -1,0 +1,39 @@
+# Binaries
+small-rag
+small-rag.exe
+small-rag.dll
+small-rag.so
+
+# Build artifacts
+*.o
+*.a
+*.so
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Go
+go.sum
+vendor/
+
+# Data & Logs
+.small-rag/
+*.db
+*.log
+logs/
+
+# Temporary
+tmp/
+temp/
+*.tmp
+
+# OS
+.DS_Store
+Thumbs.db

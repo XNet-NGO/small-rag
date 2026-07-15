@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/xnet-admin-1/small-rag/internal/document"
 	"github.com/xnet-admin-1/small-rag/internal/search"
@@ -264,7 +265,7 @@ func (s *Server) handleListDocuments(w http.ResponseWriter, r *http.Request) {
 
 // handleGetDocument gets document details
 func (s *Server) handleGetDocument(w http.ResponseWriter, r *http.Request) {
-	docID := r.URL.Path[len("/api/v1/documents/"):]
+	docID := chi.URLParam(r, "doc_id")
 
 	var id, title, source, content, createdAt, updatedAt string
 	err := s.db.QueryRow(
@@ -315,7 +316,7 @@ func (s *Server) handleGetDocument(w http.ResponseWriter, r *http.Request) {
 
 // handleDeleteDocument deletes a document
 func (s *Server) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {
-	docID := r.URL.Path[len("/api/v1/documents/"):]
+	docID := chi.URLParam(r, "doc_id")
 
 	// Delete document (cascades to chunks and embeddings)
 	result, err := s.db.Exec("DELETE FROM documents WHERE id = ?", docID)
