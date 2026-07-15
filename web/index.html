@@ -739,6 +739,8 @@
                                     showMessage(`Indexed: ${data.chunks_created} chunks, ${data.embeddings_created} embeddings in ${(data.duration_ms/1000).toFixed(1)}s`, 'success');
                                     clearUpload();
                                     loadDocuments();
+                                } else if (data.type === 'error') {
+                                    showMessage(data.error, 'error');
                                 }
                             } catch (e) {}
                         }

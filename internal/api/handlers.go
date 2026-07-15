@@ -27,24 +27,33 @@ type DocumentResponse struct {
 
 // handleUploadDocument uploads and indexes a document
 func (s *Server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
+	streaming := r.URL.Query().Get("stream") == "true"
+
+	// Helper to respond with error in the appropriate format
+	respondErr := func(status int, msg string) {
+		if streaming {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			evt, _ := json.Marshal(map[string]interface{}{"type": "error", "error": msg})
+			fmt.Fprintf(w, "data: %s\n\n", evt)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		} else {
+			respondJSON(w, status, DocumentResponse{Success: false, Error: msg, Code: status})
+		}
+	}
+
 	// Parse multipart form
 	if err := r.ParseMultipartForm(100 * 1024 * 1024); err != nil {
-		respondJSON(w, http.StatusBadRequest, DocumentResponse{
-			Success: false,
-			Error:   fmt.Sprintf("Failed to parse form: %v", err),
-			Code:    400,
-		})
+		respondErr(400, fmt.Sprintf("Failed to parse form: %v", err))
 		return
 	}
 
 	// Get file
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		respondJSON(w, http.StatusBadRequest, DocumentResponse{
-			Success: false,
-			Error:   "No file provided",
-			Code:    400,
-		})
+		respondErr(400, "No file provided")
 		return
 	}
 	defer file.Close()
@@ -52,11 +61,7 @@ func (s *Server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 	// Read file data
 	fileData, err := io.ReadAll(file)
 	if err != nil {
-		respondJSON(w, http.StatusBadRequest, DocumentResponse{
-			Success: false,
-			Error:   fmt.Sprintf("Failed to read file: %v", err),
-			Code:    400,
-		})
+		respondErr(400, fmt.Sprintf("Failed to read file: %v", err))
 		return
 	}
 
@@ -70,11 +75,7 @@ func (s *Server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 	// Parse document
 	content, err := document.ParseFile(header.Filename, fileData)
 	if err != nil {
-		respondJSON(w, http.StatusBadRequest, DocumentResponse{
-			Success: false,
-			Error:   fmt.Sprintf("Failed to parse file: %v", err),
-			Code:    400,
-		})
+		respondErr(400, fmt.Sprintf("Failed to parse file: %v", err))
 		return
 	}
 
@@ -90,19 +91,10 @@ func (s *Server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 	).Scan(&existingID)
 
 	if err == nil {
-		// Document already exists
-		respondJSON(w, http.StatusConflict, DocumentResponse{
-			Success: false,
-			Error:   fmt.Sprintf("Document already indexed (ID: %s)", existingID),
-			Code:    409,
-		})
+		respondErr(409, fmt.Sprintf("Document already indexed (ID: %s)", existingID))
 		return
 	} else if err != sql.ErrNoRows {
-		respondJSON(w, http.StatusInternalServerError, DocumentResponse{
-			Success: false,
-			Error:   fmt.Sprintf("Database error: %v", err),
-			Code:    500,
-		})
+		respondErr(500, fmt.Sprintf("Database error: %v", err))
 		return
 	}
 
@@ -119,11 +111,7 @@ func (s *Server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 
 	// Chunk document
 	if err := doc.Chunk(); err != nil {
-		respondJSON(w, http.StatusInternalServerError, DocumentResponse{
-			Success: false,
-			Error:   fmt.Sprintf("Failed to chunk document: %v", err),
-			Code:    500,
-		})
+		respondErr(500, fmt.Sprintf("Failed to chunk document: %v", err))
 		return
 	}
 
@@ -135,11 +123,7 @@ func (s *Server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 		time.Now(), time.Now(),
 	)
 	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, DocumentResponse{
-			Success: false,
-			Error:   fmt.Sprintf("Failed to save document: %v", err),
-			Code:    500,
-		})
+		respondErr(500, fmt.Sprintf("Failed to save document: %v", err))
 		return
 	}
 
@@ -162,8 +146,7 @@ func (s *Server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 	totalChunks := len(doc.Chunks)
 	startEmbed := time.Now()
 
-	// Check if client wants streaming progress
-	streaming := r.URL.Query().Get("stream") == "true"
+	// Set up streaming progress if requested
 	var flusher http.Flusher
 	if streaming {
 		f, ok := w.(http.Flusher)
