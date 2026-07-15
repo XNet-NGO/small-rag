@@ -147,11 +147,61 @@ func (e *Engine) Embed(text string) ([]float32, error) {
 		return make([]float32, e.dims), nil
 	}
 
-	// Truncate to context size
-	if len(tokens) > 256 {
-		tokens = tokens[:256]
+	// Window size for this model
+	const maxTokens = 256
+
+	// If tokens fit in one window, embed directly
+	if len(tokens) <= maxTokens {
+		emb, err := e.embedTokens(tokens)
+		if err != nil {
+			return nil, err
+		}
+		e.cache[text] = emb
+		return emb, nil
 	}
 
+	// For longer text, split into overlapping windows and average embeddings
+	var allEmbeddings [][]float32
+	stride := maxTokens - 32 // 32 token overlap between windows
+	for start := 0; start < len(tokens); start += stride {
+		end := start + maxTokens
+		if end > len(tokens) {
+			end = len(tokens)
+		}
+		window := tokens[start:end]
+		if len(window) < 8 { // skip tiny trailing windows
+			break
+		}
+		emb, err := e.embedTokens(window)
+		if err != nil {
+			continue
+		}
+		allEmbeddings = append(allEmbeddings, emb)
+	}
+
+	if len(allEmbeddings) == 0 {
+		return nil, fmt.Errorf("all embedding windows failed")
+	}
+
+	// Average all window embeddings
+	result := make([]float32, e.dims)
+	for _, emb := range allEmbeddings {
+		for i, v := range emb {
+			result[i] += v
+		}
+	}
+	for i := range result {
+		result[i] /= float32(len(allEmbeddings))
+	}
+	normalize(result)
+
+	// Cache
+	e.cache[text] = result
+	return result, nil
+}
+
+// embedTokens embeds a single token sequence (must fit in context window)
+func (e *Engine) embedTokens(tokens []llama.Token) ([]float32, error) {
 	// Clear memory
 	mem, err := llama.GetMemory(e.ctx)
 	if err == nil {
@@ -168,7 +218,6 @@ func (e *Engine) Embed(text string) ([]float32, error) {
 	// Get sequence embeddings
 	embedding, err := llama.GetEmbeddingsSeq(e.ctx, 0, int32(e.dims))
 	if err != nil || embedding == nil {
-		// Fallback: try getting embeddings for last token
 		embedding, err = llama.GetEmbeddingsIth(e.ctx, -1, int32(e.dims))
 		if err != nil || embedding == nil {
 			return nil, fmt.Errorf("failed to get embeddings: %v", err)
@@ -179,9 +228,6 @@ func (e *Engine) Embed(text string) ([]float32, error) {
 	result := make([]float32, len(embedding))
 	copy(result, embedding)
 	normalize(result)
-
-	// Cache
-	e.cache[text] = result
 
 	return result, nil
 }
