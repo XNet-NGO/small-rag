@@ -43,9 +43,7 @@ CREATE TABLE IF NOT EXISTS embeddings (
 -- Full-text search index
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
     chunk_id UNINDEXED,
-    text,
-    content=chunks,
-    content_rowid=rowid
+    text
 );
 
 -- Settings (key-value store)
@@ -63,7 +61,7 @@ CREATE INDEX IF NOT EXISTS idx_documents_created ON documents(created_at);
 
 -- Triggers to update FTS index
 CREATE TRIGGER IF NOT EXISTS chunks_ai AFTER INSERT ON chunks BEGIN
-  INSERT INTO chunks_fts(rowid, chunk_id, text) VALUES (new.rowid, new.id, new.text);
+  INSERT INTO chunks_fts(chunk_id, text) VALUES (new.id, new.text);
 END;
 
 CREATE TRIGGER IF NOT EXISTS chunks_ad AFTER DELETE ON chunks BEGIN
@@ -71,7 +69,7 @@ CREATE TRIGGER IF NOT EXISTS chunks_ad AFTER DELETE ON chunks BEGIN
 END;
 
 CREATE TRIGGER IF NOT EXISTS chunks_au AFTER UPDATE ON chunks BEGIN
-  UPDATE chunks_fts SET text = new.text WHERE chunk_id = new.id;
+  UPDATE chunks_fts SET text = new.text WHERE chunk_id = old.id;
 END;
 `
 

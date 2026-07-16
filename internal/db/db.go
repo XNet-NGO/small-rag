@@ -19,6 +19,11 @@ func Open(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to enable WAL: %w", err)
 	}
 
+	// Enable foreign key enforcement (required for CASCADE deletes)
+	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
+		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
+	}
+
 	// Set reasonable limits
 	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
 		return nil, fmt.Errorf("failed to set busy timeout: %w", err)

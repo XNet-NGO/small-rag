@@ -368,7 +368,28 @@ func (s *Server) handleGetDocument(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {
 	docID := chi.URLParam(r, "doc_id")
 
-	// Delete document (cascades to chunks and embeddings)
+	// Manually cascade: delete embeddings → chunks → document
+	// (FTS5 triggers don't play well with CASCADE)
+	_, err := s.db.Exec("DELETE FROM embeddings WHERE chunk_id IN (SELECT id FROM chunks WHERE doc_id = ?)", docID)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, DocumentResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to delete embeddings: %v", err),
+			Code:    500,
+		})
+		return
+	}
+
+	_, err = s.db.Exec("DELETE FROM chunks WHERE doc_id = ?", docID)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, DocumentResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to delete chunks: %v", err),
+			Code:    500,
+		})
+		return
+	}
+
 	result, err := s.db.Exec("DELETE FROM documents WHERE id = ?", docID)
 	if err != nil {
 		respondJSON(w, http.StatusInternalServerError, DocumentResponse{

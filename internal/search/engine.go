@@ -116,7 +116,7 @@ func (e *Engine) keywordSearch(query string, topK int, minScore float32) ([]Resu
 	rows, err := e.db.Query(`
 		SELECT c.id, c.doc_id, c.text
 		FROM chunks_fts
-		JOIN chunks c ON chunks_fts.rowid = c.rowid
+		JOIN chunks c ON chunks_fts.chunk_id = c.id
 		WHERE chunks_fts MATCH ?
 		ORDER BY rank
 		LIMIT ?
