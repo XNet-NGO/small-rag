@@ -125,12 +125,12 @@ func cmdServe() {
 	}
 
 	// Set model path relative to binary
-	modelPath := filepath.Join(baseDir, "models", install.ModelName)
+	modelPath := filepath.Join(baseDir, "models", "embedding", install.ModelName)
 
-	// Also check ~/.small-rag/models/ as fallback
+	// Also check ~/.small-rag/models/embedding/ as fallback
 	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
 		home, _ := os.UserHomeDir()
-		altPath := filepath.Join(home, ".small-rag", "models", install.ModelName)
+		altPath := filepath.Join(home, ".small-rag", "models", "embedding", install.ModelName)
 		if _, err := os.Stat(altPath); err == nil {
 			modelPath = altPath
 		}
@@ -209,10 +209,10 @@ func cmdMCP() {
 	}
 
 	// Set model path relative to binary
-	modelPath := filepath.Join(baseDir, "models", install.ModelName)
+	modelPath := filepath.Join(baseDir, "models", "embedding", install.ModelName)
 	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
 		home, _ := os.UserHomeDir()
-		altPath := filepath.Join(home, ".small-rag", "models", install.ModelName)
+		altPath := filepath.Join(home, ".small-rag", "models", "embedding", install.ModelName)
 		if _, err := os.Stat(altPath); err == nil {
 			modelPath = altPath
 		}

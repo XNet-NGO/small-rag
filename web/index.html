@@ -566,8 +566,7 @@
                     <div class="form-group">
                         <label for="ragModel">Model</label>
                         <select id="ragModel">
-                            <option value="falcon-h1-tiny-90m">Falcon-H1-Tiny-90M (local)</option>
-                            <option value="default">Default</option>
+                            <option>loading...</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -616,6 +615,7 @@
             setInterval(checkHealth, 5000);
             loadDocuments();
             loadConfig();
+            loadModels();
         });
 
         // Setup Event Listeners
@@ -984,6 +984,29 @@
                 `;
             } catch (error) {
                 console.error('Failed to load config:', error);
+            }
+        }
+
+        // Load available chat models
+        async function loadModels() {
+            try {
+                const response = await fetch(`${API_BASE}/models`);
+                const data = await response.json();
+                const select = document.getElementById('ragModel');
+                select.innerHTML = '';
+
+                if (data.data.models && data.data.models.length > 0) {
+                    data.data.models.forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model.name;
+                        option.textContent = `${model.name} (${model.size_mb}MB)`;
+                        select.appendChild(option);
+                    });
+                } else {
+                    select.innerHTML = '<option>no models found</option>';
+                }
+            } catch (error) {
+                document.getElementById('ragModel').innerHTML = '<option>error loading models</option>';
             }
         }
 
