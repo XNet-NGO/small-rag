@@ -34,6 +34,7 @@ type Server struct {
 	searchEngine *search.Engine
 	batchMgr     *batch.Manager
 	llmClient    *llm.Client
+	localLLM     *llm.LocalEngine
 }
 
 // NewServer creates a new API server
@@ -64,6 +65,7 @@ func NewServer(db *sql.DB, cfg *config.Config) *Server {
 		searchEngine: search.NewEngine(db),
 		batchMgr:     batch.NewManager(),
 		llmClient:    llmClient,
+		localLLM:     llm.NewLocalEngine(),
 	}
 	s.setupRouter()
 	return s
@@ -89,6 +91,7 @@ func (s *Server) setupRouter() {
 		r.Post("/rag/query", s.handleRAGQuery)
 		r.Get("/config", s.handleGetConfig)
 		r.Get("/models", s.handleListModels)
+		r.Post("/models/load", s.handleLoadModel)
 		r.Post("/tools/search_and_rag", s.handleSearchAndRAG)
 		r.Post("/batch/index", s.handleBatchIndex)
 		r.Get("/batch/{batch_id}", s.handleBatchStatus)
@@ -279,9 +282,10 @@ func (s *Server) handleRAGQuery(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "data: %s\n\n", contextEvent)
 		flusher.Flush()
 
-		// Stream LLM response
+		// Stream LLM response via HTTP client (points at managed llama-server)
 		genStart := time.Now()
 		tokenCount := 0
+
 		resp, err := s.llmClient.ChatCompletionStream(ctx, chatReq, func(delta string, done bool, err error) {
 			if err != nil {
 				log.Printf("Stream error: %v", err)
@@ -308,12 +312,10 @@ func (s *Server) handleRAGQuery(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 			return
 		}
+		_ = resp
 
 		// Send done event
 		totalTokens := tokenCount
-		if resp != nil && resp.Usage.TotalTokens > 0 {
-			totalTokens = resp.Usage.TotalTokens
-		}
 		genTimeMs := time.Since(genStart).Milliseconds()
 		doneEvent, _ := json.Marshal(map[string]interface{}{
 			"type":               "done",
@@ -426,6 +428,44 @@ func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"data":    map[string]interface{}{"models": models},
+	})
+}
+
+func (s *Server) handleLoadModel(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Model string `json:"model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Model == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]interface{}{"success": false, "error": "model field required"})
+		return
+	}
+
+	// Find the model file in chat directory
+	homeDir, _ := os.UserHomeDir()
+	modelPath := filepath.Join(homeDir, "small-rag", "models", "chat", req.Model)
+	if !strings.HasSuffix(modelPath, ".gguf") {
+		modelPath += ".gguf"
+	}
+
+	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
+		respondJSON(w, http.StatusNotFound, map[string]interface{}{"success": false, "error": "model not found: " + req.Model})
+		return
+	}
+
+	// Load the model
+	log.Printf("Loading chat model: %s", filepath.Base(modelPath))
+	if err := s.localLLM.LoadModel(modelPath); err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+
+	// Point the HTTP LLM client at the managed local server
+	s.llmClient.BaseURL = s.localLLM.URL()
+
+	log.Printf("Chat model loaded: %s (LLM endpoint: %s)", s.localLLM.ModelName(), s.llmClient.BaseURL)
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"data":    map[string]interface{}{"model": s.localLLM.ModelName(), "status": "loaded"},
 	})
 }
 
@@ -823,7 +863,8 @@ async function del(id){if(!confirm('Delete?'))return;try{await fetch(API+'/docum
 async function search(){const q=document.getElementById('query').value;if(!q){msg('Enter query','err');return}try{document.getElementById('searchBtn').disabled=true;const r=await fetch(API+'/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,top_k:5,search_type:'hybrid'})});const d=await r.json();const c=document.getElementById('results');c.innerHTML='';if(!d.data.results||d.data.results.length===0){c.innerHTML='<p class="muted">No results</p>';return}d.data.results.forEach(res=>{const item=document.createElement('div');item.className='result';item.innerHTML='<div class="score">'+(res.score*100).toFixed(0)+'%</div><div>'+res.text+'</div>';c.appendChild(item)})}catch(e){msg('Search failed: '+e.message,'err')}finally{document.getElementById('searchBtn').disabled=false}}
 async function rag(){var q=document.getElementById('ragQuery').value;if(!q){msg('Enter question','err');return}try{document.getElementById('ragBtn').disabled=true;document.getElementById('ragResponse').textContent='Loading...';var r=await fetch(API+'/rag/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,model:document.getElementById('model').value,stream:true})});var reader=r.body.getReader();var decoder=new TextDecoder();var resp='';var reading=true;while(reading){var chunk=await reader.read();if(chunk.done){reading=false;break}var text=decoder.decode(chunk.value);var lines=text.split('\n');for(var i=0;i<lines.length;i++){var line=lines[i];if(line.startsWith('data: ')){try{var data=JSON.parse(line.substring(6));if(data.type==='delta'){resp+=data.text;document.getElementById('ragResponse').textContent=resp}else if(data.type==='done'){document.getElementById('ragResponse').textContent=resp+'\n\n---\nTokens: '+data.total_tokens+' | Time: '+(data.generation_time_ms/1000).toFixed(1)+'s'}}catch(pe){}}}}}catch(e){msg('RAG failed: '+e.message,'err')}finally{document.getElementById('ragBtn').disabled=false}}
 async function loadConfig(){try{const r=await fetch(API+'/config');const d=await r.json();document.getElementById('config').innerHTML='<b>Embedding Model:</b> '+d.data.embedding_model+'<br><b>Embedding Dims:</b> '+d.data.embedding_dims+'<br><b>Chunk Size:</b> '+d.data.chunk_size+' tokens<br><b>Chunk Overlap:</b> '+d.data.chunk_overlap+' tokens<br><b>Chat Model:</b> '+d.data.default_model+'<br><b>LLM Endpoint:</b> '+d.data.llm_endpoint+'<br><b>Port:</b> '+d.data.port}catch(e){}}
-async function loadModels(){try{const r=await fetch(API+'/models');const d=await r.json();const sel=document.getElementById('model');sel.innerHTML='';if(d.data.models&&d.data.models.length>0){d.data.models.forEach(m=>{const opt=document.createElement('option');opt.value=m.name;opt.textContent=m.name+' ('+m.size_mb+'MB)';sel.appendChild(opt)})}else{sel.innerHTML='<option>no models found</option>'}}catch(e){document.getElementById('model').innerHTML='<option>error loading models</option>'}}
+async function loadModels(){try{const r=await fetch(API+'/models');const d=await r.json();const sel=document.getElementById('model');sel.innerHTML='';if(d.data.models&&d.data.models.length>0){d.data.models.forEach(m=>{const opt=document.createElement('option');opt.value=m.id;opt.textContent=m.name+' ('+m.size_mb+'MB)';sel.appendChild(opt)});sel.addEventListener('change',swapModel)}else{sel.innerHTML='<option>no models found</option>'}}catch(e){document.getElementById('model').innerHTML='<option>error loading models</option>'}}
+async function swapModel(){var sel=document.getElementById('model');var model=sel.value;sel.disabled=true;msg('Loading '+model+'...','ok');try{var r=await fetch(API+'/models/load',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:model})});var d=await r.json();if(d.success){msg('Model loaded: '+d.data.model,'ok')}else{msg(d.error,'err')}}catch(e){msg('Failed: '+e.message,'err')}finally{sel.disabled=false}}
 </script>
 </body>
 </html>`
