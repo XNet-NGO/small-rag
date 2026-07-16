@@ -215,21 +215,34 @@ func (e *Engine) embedTokens(tokens []llama.Token) ([]float32, error) {
 		return nil, fmt.Errorf("decode failed: ret=%d err=%v", ret, err)
 	}
 
-	// Get sequence embeddings
+	// Try sequence embeddings first (works for pooling models)
 	embedding, err := llama.GetEmbeddingsSeq(e.ctx, 0, int32(e.dims))
-	if err != nil || embedding == nil {
-		embedding, err = llama.GetEmbeddingsIth(e.ctx, -1, int32(e.dims))
-		if err != nil || embedding == nil {
-			return nil, fmt.Errorf("failed to get embeddings: %v", err)
-		}
+	if err == nil && embedding != nil && len(embedding) == e.dims {
+		result := make([]float32, len(embedding))
+		copy(result, embedding)
+		normalize(result)
+		return result, nil
 	}
 
-	// Copy and normalize
-	result := make([]float32, len(embedding))
-	copy(result, embedding)
-	normalize(result)
+	// Fallback: get all embeddings and use the first output
+	allEmb, err := llama.GetEmbeddings(e.ctx, 1, e.dims)
+	if err == nil && allEmb != nil && len(allEmb) >= e.dims {
+		result := make([]float32, e.dims)
+		copy(result, allEmb[:e.dims])
+		normalize(result)
+		return result, nil
+	}
 
-	return result, nil
+	// Last resort: try index 0
+	embedding, err = llama.GetEmbeddingsIth(e.ctx, 0, int32(e.dims))
+	if err == nil && embedding != nil {
+		result := make([]float32, len(embedding))
+		copy(result, embedding)
+		normalize(result)
+		return result, nil
+	}
+
+	return nil, fmt.Errorf("failed to get embeddings from model")
 }
 
 // EmbedBatch generates embeddings for multiple texts
