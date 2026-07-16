@@ -250,6 +250,7 @@ func (s *Server) handleRAGQuery(w http.ResponseWriter, r *http.Request) {
 		Model:       req.Model,
 		Messages:    messages,
 		Temperature: req.Temperature,
+		MaxTokens:   2048,
 	}
 
 	ctx := context.Background()
@@ -508,6 +509,7 @@ func (s *Server) handleSearchAndRAG(w http.ResponseWriter, r *http.Request) {
 		Model:       req.Model,
 		Messages:    messages,
 		Temperature: req.Temperature,
+		MaxTokens:   2048,
 	}
 
 	// Call LLM (non-streaming)
