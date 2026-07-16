@@ -371,9 +371,19 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	if s.embedding != nil && s.embedding.Dims() > 0 {
 		actualDims = s.embedding.Dims()
 	}
-	llmURL := os.Getenv("SMALL_RAG_LLM_URL")
-	if llmURL == "" {
-		llmURL = "not configured"
+
+	// Show actual loaded chat model and endpoint
+	chatModel := "none loaded"
+	llmEndpoint := "not running"
+	if s.localLLM.IsLoaded() {
+		chatModel = s.localLLM.ModelName()
+		llmEndpoint = s.localLLM.URL()
+	} else {
+		llmURL := os.Getenv("SMALL_RAG_LLM_URL")
+		if llmURL != "" {
+			llmEndpoint = llmURL
+			chatModel = "external"
+		}
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -385,8 +395,8 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 			"chunk_overlap":   s.cfg.ChunkOverlap,
 			"search_types":    s.cfg.SearchTypes,
 			"min_score":       s.cfg.MinScore,
-			"default_model":   "falcon-h1-tiny-90m",
-			"llm_endpoint":    llmURL,
+			"default_model":   chatModel,
+			"llm_endpoint":    llmEndpoint,
 			"port":            s.cfg.Port,
 			"enable_cache":    s.cfg.EnableCache,
 			"enable_sse":      s.cfg.EnableSSE,
