@@ -7,7 +7,7 @@ services:
     volumes:
       - ./lib:/app/lib          # llama.cpp shared libraries
       - ./models:/app/models    # GGUF model files
-      - rag-data:/app/.small-rag-db  # Persistent database
+      - rag-data:/app/small-rag-db  # Persistent database
     environment:
       - YZMA_LIB=/app/lib
       - SMALL_RAG_LLM_URL=http://host.docker.internal:11434/v1

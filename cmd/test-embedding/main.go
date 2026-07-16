@@ -16,7 +16,7 @@ func main() {
 
 	// Model path
 	homeDir, _ := os.UserHomeDir()
-	modelPath := filepath.Join(homeDir, ".small-rag/models/qwen3-embedding-0.6b-q4_k_m.gguf")
+	modelPath := filepath.Join(homeDir, "small-rag/models/qwen3-embedding-0.6b-q4_k_m.gguf")
 
 	// Check if model exists
 	if _, err := os.Stat(modelPath); os.IsNotExist(err) {

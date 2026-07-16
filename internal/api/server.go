@@ -42,7 +42,7 @@ func NewServer(db *sql.DB, cfg *config.Config) *Server {
 	modelPath := cfg.ModelPath
 	if modelPath == "" {
 		homeDir, _ := os.UserHomeDir()
-		modelPath = filepath.Join(homeDir, ".small-rag/models/qwen3-embedding-0.6b-q4_k_m.gguf")
+		modelPath = filepath.Join(homeDir, "small-rag/models/qwen3-embedding-0.6b-q4_k_m.gguf")
 	}
 
 	// Initialize embedding engine
@@ -394,7 +394,7 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
 	// Scan chat models directory
 	homeDir, _ := os.UserHomeDir()
-	chatDir := filepath.Join(homeDir, ".small-rag", "models", "chat")
+	chatDir := filepath.Join(homeDir, "small-rag", "models", "chat")
 
 	var models []map[string]interface{}
 	entries, err := os.ReadDir(chatDir)

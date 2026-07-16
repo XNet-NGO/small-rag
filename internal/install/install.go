@@ -41,7 +41,7 @@ func Run() error {
 	dirs := []string{
 		filepath.Join(baseDir, "lib"),
 		filepath.Join(baseDir, "models"),
-		filepath.Join(baseDir, ".small-rag-db"),
+		filepath.Join(baseDir, "small-rag-db"),
 	}
 	for _, dir := range dirs {
 		if err := os.MkdirAll(dir, 0755); err != nil {
@@ -117,7 +117,7 @@ func Run() error {
 	fmt.Printf("  %s/\n", baseDir)
 	fmt.Printf("  ├── small-rag              (this binary)\n")
 	fmt.Printf("  ├── config.json\n")
-	fmt.Printf("  ├── .small-rag-db/\n")
+	fmt.Printf("  ├── small-rag-db/\n")
 	fmt.Printf("  │   └── small-rag.db       (created on first run)\n")
 	fmt.Printf("  ├── lib/\n")
 	fmt.Printf("  │   └── libllama.so (+ other .so files)\n")

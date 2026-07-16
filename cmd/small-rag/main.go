@@ -62,7 +62,7 @@ Server flags:
 Directory structure (after install):
   ./small-rag              Main binary
   ./config.json            Configuration
-  ./.small-rag-db/         SQLite database
+  ./small-rag-db/         SQLite database
   ./lib/                   llama.cpp shared libraries
   ./models/
       └── %s
@@ -87,13 +87,13 @@ func cmdServe() {
 	// Resolve base directory (next to binary)
 	baseDir := getBaseDir()
 
-	// Data directory is .small-rag-db/ next to binary
-	dataDir := filepath.Join(baseDir, ".small-rag-db")
+	// Data directory is small-rag-db/ next to binary
+	dataDir := filepath.Join(baseDir, "small-rag-db")
 
-	// Fallback: if .small-rag-db doesn't exist, try ~/.small-rag (legacy)
+	// Fallback: if small-rag-db doesn't exist, try ~/small-rag (legacy)
 	if _, err := os.Stat(dataDir); os.IsNotExist(err) {
 		home, _ := os.UserHomeDir()
-		legacyDir := filepath.Join(home, ".small-rag")
+		legacyDir := filepath.Join(home, "small-rag")
 		if _, err := os.Stat(legacyDir); err == nil {
 			dataDir = legacyDir
 		}
@@ -127,10 +127,10 @@ func cmdServe() {
 	// Set model path relative to binary
 	modelPath := filepath.Join(baseDir, "models", "embedding", install.ModelName)
 
-	// Also check ~/.small-rag/models/embedding/ as fallback
+	// Also check ~/small-rag/models/embedding/ as fallback
 	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
 		home, _ := os.UserHomeDir()
-		altPath := filepath.Join(home, ".small-rag", "models", "embedding", install.ModelName)
+		altPath := filepath.Join(home, "small-rag", "models", "embedding", install.ModelName)
 		if _, err := os.Stat(altPath); err == nil {
 			modelPath = altPath
 		}
@@ -178,13 +178,13 @@ func cmdMCP() {
 	// Resolve base directory (next to binary)
 	baseDir := getBaseDir()
 
-	// Data directory is .small-rag-db/ next to binary
-	dataDir := filepath.Join(baseDir, ".small-rag-db")
+	// Data directory is small-rag-db/ next to binary
+	dataDir := filepath.Join(baseDir, "small-rag-db")
 
-	// Fallback: if .small-rag-db doesn't exist, try ~/.small-rag (legacy)
+	// Fallback: if small-rag-db doesn't exist, try ~/small-rag (legacy)
 	if _, err := os.Stat(dataDir); os.IsNotExist(err) {
 		home, _ := os.UserHomeDir()
-		legacyDir := filepath.Join(home, ".small-rag")
+		legacyDir := filepath.Join(home, "small-rag")
 		if _, err := os.Stat(legacyDir); err == nil {
 			dataDir = legacyDir
 		}
@@ -212,7 +212,7 @@ func cmdMCP() {
 	modelPath := filepath.Join(baseDir, "models", "embedding", install.ModelName)
 	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
 		home, _ := os.UserHomeDir()
-		altPath := filepath.Join(home, ".small-rag", "models", "embedding", install.ModelName)
+		altPath := filepath.Join(home, "small-rag", "models", "embedding", install.ModelName)
 		if _, err := os.Stat(altPath); err == nil {
 			modelPath = altPath
 		}
