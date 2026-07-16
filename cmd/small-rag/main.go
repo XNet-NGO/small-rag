@@ -155,6 +155,17 @@ func cmdServe() {
 
 	// Start API server
 	server := api.NewServer(database, cfg)
+
+	// Auto-load default chat model if available
+	homeDir, _ := os.UserHomeDir()
+	defaultChatModel := filepath.Join(homeDir, "small-rag", "models", "chat", install.ChatModelName)
+	if _, err := os.Stat(defaultChatModel); err == nil {
+		log.Printf("Auto-loading chat model: %s", install.ChatModelName)
+		if err := server.LoadChatModel(defaultChatModel); err != nil {
+			log.Printf("Warning: failed to auto-load chat model: %v", err)
+		}
+	}
+
 	log.Printf("Starting server on port %d", *port)
 	if err := server.Start(*port); err != nil {
 		log.Fatalf("Server error: %v", err)

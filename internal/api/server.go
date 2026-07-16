@@ -441,6 +441,16 @@ func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// LoadChatModel loads a chat model (public, for use during startup)
+func (s *Server) LoadChatModel(modelPath string) error {
+	if err := s.localLLM.LoadModel(modelPath); err != nil {
+		return err
+	}
+	s.llmClient.BaseURL = s.localLLM.URL()
+	log.Printf("Chat model loaded: %s (LLM endpoint: %s)", s.localLLM.ModelName(), s.llmClient.BaseURL)
+	return nil
+}
+
 func (s *Server) handleLoadModel(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Model string `json:"model"`
