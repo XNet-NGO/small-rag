@@ -19,7 +19,7 @@ const (
 
 	// Chat/LLM model
 	ChatModelURL  = "https://huggingface.co/tiiuae/Falcon-H1-Tiny-90M-Instruct-GGUF/resolve/main/Falcon-H1-Tiny-90M-Instruct-Q8_0.gguf"
-	ChatModelName = "Qwen3-0.6B-Q4_K_M.gguf"
+	ChatModelName = "Falcon-H1-Tiny-90M-Instruct-Q4_K_M.gguf"
 	ChatModelSize = 94_000_000 // ~94MB
 
 	// llama.cpp shared library release (matches yzma v1.19.0 / llama.cpp b9979+)
